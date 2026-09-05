@@ -1,30 +1,52 @@
 import asyncio
 import logging
 import os
+from datetime import datetime, timezone
 
 import resend
+
+from db import db
 
 logger = logging.getLogger("emailer")
 
 
-def configured() -> bool:
-    return bool(os.environ.get("RESEND_API_KEY"))
+async def get_config() -> dict:
+    """DB-stored settings (admin UI) take precedence over environment."""
+    s = await db.settings.find_one({"key": "email"}, {"_id": 0}) or {}
+    return {
+        "api_key": s.get("resend_api_key") or os.environ.get("RESEND_API_KEY") or "",
+        "sender_email": s.get("sender_email") or os.environ.get("SENDER_EMAIL") or "onboarding@resend.dev",
+        "enabled": s.get("enabled", True),
+        "source": "settings" if s.get("resend_api_key") else ("env" if os.environ.get("RESEND_API_KEY") else "none"),
+        "updated_at": s.get("updated_at"), "updated_by": s.get("updated_by"), "last_test": s.get("last_test"),
+    }
 
 
-async def send_email(to: str, subject: str, html: str) -> bool:
-    """Send via Resend when configured; otherwise log and return False so callers can fall back."""
-    if not configured():
-        logger.warning("RESEND_API_KEY not set — email to %s NOT sent (subject: %s)", to, subject)
-        return False
-    resend.api_key = os.environ["RESEND_API_KEY"]
-    params = {"from": os.environ.get("SENDER_EMAIL", "onboarding@resend.dev"), "to": [to], "subject": subject, "html": html}
+async def configured() -> bool:
+    c = await get_config()
+    return bool(c["api_key"]) and c["enabled"]
+
+
+async def send_email(to: str, subject: str, html: str) -> dict:
+    """Returns {sent: bool, id|error}. Never raises."""
+    c = await get_config()
+    if not c["api_key"] or not c["enabled"]:
+        logger.warning("email not configured — to %s NOT sent (subject: %s)", to, subject)
+        return {"sent": False, "error": "email delivery not configured"}
+    resend.api_key = c["api_key"]
+    params = {"from": c["sender_email"], "to": [to], "subject": subject, "html": html}
     try:
         res = await asyncio.to_thread(resend.Emails.send, params)
-        logger.info("email sent to %s id=%s", to, res.get("id") if isinstance(res, dict) else res)
-        return True
+        mid = res.get("id") if isinstance(res, dict) else str(res)
+        logger.info("email sent to %s id=%s", to, mid)
+        return {"sent": True, "id": mid}
     except Exception as e:  # noqa: BLE001
         logger.error("Resend send failed: %s", e)
-        return False
+        return {"sent": False, "error": str(e)[:300]}
+
+
+async def record_test(result: dict, to: str):
+    await db.settings.update_one({"key": "email"}, {"$set": {"last_test": {**result, "to": to, "at": datetime.now(timezone.utc)}}}, upsert=True)
 
 
 def reset_email_html(name: str, link: str) -> str:
@@ -39,3 +61,8 @@ def reset_email_html(name: str, link: str) -> str:
     </table>
   </td></tr>
 </table>"""
+
+
+def test_email_html(name: str) -> str:
+    return f"""<div style="font-family:Arial,sans-serif;padding:24px;background:#0A0E17;color:#F8FAFC"><h2>Sentinel<span style="color:#00F0FF">Mar</span> email delivery test</h2>
+<p style="color:#CBD5E1">Hello {name}, Resend delivery is configured correctly. Password-reset and alert emails will be sent from this address.</p></div>"""

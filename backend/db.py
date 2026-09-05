@@ -27,6 +27,9 @@ async def ensure_indexes():
     await db.audit_events.create_index([("entity_id", 1), ("created_at", 1)])
     await db.jobs.create_index([("created_at", -1)])
     await db.alerts.create_index([("created_at", -1)])
+    await db.watchlist.create_index([("mmsi", 1), ("active", 1)])
+    await db.share_links.create_index("token_hash")
+    await db.settings.create_index("key", unique=True)
 
 
 def to_utc(dt):

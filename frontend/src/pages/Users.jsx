@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { UserPlus, Trash2, ShieldCheck, Ban, CheckCircle2 } from "lucide-react";
 import { api, apiError, fmtTime } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import { EmailSettings } from "@/components/admin/EmailSettings";
 
 const inputCls = "w-full rounded border bg-slate-900/60 px-2.5 py-1.5 font-mono text-xs text-slate-100 outline-none focus:border-cyan-400/60";
 const bd = { borderColor: "var(--border-highlight)" };
@@ -80,6 +81,7 @@ export default function Users() {
           </table>
         </div>
       </div>
+      <div className="mt-4"><EmailSettings onChanged={load} /></div>
       <div className="panel mt-4 overflow-hidden fade-up" data-testid="reset-requests">
         <div className="flex items-center justify-between border-b px-4 py-3" style={{ borderColor: "var(--border-default)" }}>
           <h2 className="font-display font-semibold">Password reset requests</h2>

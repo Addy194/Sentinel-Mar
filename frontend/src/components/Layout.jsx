@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { Radar, LayoutDashboard, Satellite, Activity, ShieldAlert, Users as UsersIcon, LogOut, Map as MapIcon } from "lucide-react";
+import { Radar, LayoutDashboard, Satellite, Activity, ShieldAlert, Users as UsersIcon, LogOut, Map as MapIcon, Eye } from "lucide-react";
 import { api, hasRole } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 
@@ -9,6 +9,7 @@ const links = [
   { to: "/ingest", label: "Ingestion", icon: Satellite, id: "nav-ingest-link" },
   { to: "/jobs", label: "Jobs & Alerts", icon: Activity, id: "nav-jobs-link" },
   { to: "/zones", label: "Zones", icon: MapIcon, id: "nav-zones-link" },
+  { to: "/watchlist", label: "Watchlist", icon: Eye, id: "nav-watchlist-link" },
 ];
 const ROLE_COLOR = { analyst: "#00F0FF", supervisor: "#FFB703", admin: "#FF2A6D" };
 

@@ -10,8 +10,9 @@ import { ReviewForm } from "@/components/case/ReviewForm";
 import { EvidenceTimeline } from "@/components/case/EvidenceTimeline";
 import { CorrelatePanel } from "@/components/case/CorrelatePanel";
 import { TimeScrubber } from "@/components/case/TimeScrubber";
+import { CaseTimeline } from "@/components/case/CaseTimeline";
 
-const TABS = [["candidates", "Candidates"], ["review", "Analyst review"], ["evidence", "Evidence & audit"], ["log", "Processing log"]];
+const TABS = [["candidates", "Candidates"], ["review", "Analyst review"], ["timeline", "Timeline"], ["evidence", "Evidence & audit"], ["log", "Processing log"]];
 const overlayBtn = { background: "rgba(10,14,23,0.85)", border: "1px solid var(--border-highlight)", backdropFilter: "blur(12px)" };
 
 export default function CaseDetail() {
@@ -110,6 +111,7 @@ export default function CaseDetail() {
             </>
           )}
           {tab === "review" && <ReviewForm caseId={id} candidates={cands?.candidates} reasonCodes={config?.reason_codes} resultVersion={cands?.version} onSaved={load} />}
+          {tab === "timeline" && <CaseTimeline caseId={id} caseNumber={c.case_number} />}
           {tab === "evidence" && <EvidenceTimeline evidence={evidence} />}
           {tab === "log" && (
             <div className="p-4 font-mono text-[11px] leading-relaxed" data-testid="processing-log">

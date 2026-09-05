@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { toast } from "sonner";
-import { ArrowLeft, Ship, Radio, Gavel, AlertTriangle } from "lucide-react";
-import { api, apiError, fmtTime } from "@/lib/api";
+import { ArrowLeft, Ship, Radio, Gavel, AlertTriangle, Eye } from "lucide-react";
+import { api, apiError, fmtTime, hasRole } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
 import { StatusBadge } from "@/components/StatusBadge";
 
 const Kpi = ({ label, value, color = "#F8FAFC", testId }) => (
@@ -12,9 +13,19 @@ const DECISION_COLOR = { confirm: "#10B981", reject: "#FF2A6D", needs_more_data:
 
 export default function VesselProfile() {
   const { mmsi } = useParams();
+  const { user } = useAuth();
   const [p, setP] = useState(null);
   const [err, setErr] = useState("");
-  useEffect(() => { api.get(`/vessels/${mmsi}/profile`).then((r) => setP(r.data)).catch((e) => { setErr(apiError(e)); toast.error(apiError(e)); }); }, [mmsi]);
+  const [watch, setWatch] = useState(null);
+  const loadWatch = () => api.get("/watchlist").then((r) => setWatch(r.data.find((w) => w.active && w.mmsi === mmsi) || null)).catch(() => {});
+  useEffect(() => { api.get(`/vessels/${mmsi}/profile`).then((r) => setP(r.data)).catch((e) => { setErr(apiError(e)); toast.error(apiError(e)); }); loadWatch(); }, [mmsi]); // eslint-disable-line react-hooks/exhaustive-deps
+  const flag = async () => {
+    const reason = window.prompt("Reason for watchlisting this vessel:");
+    if (!reason || reason.trim().length < 3) return;
+    try { await api.post("/watchlist", { mmsi, vessel_name: p?.vessel_name || null, reason, severity: "high" }); toast.success("Vessel added to watchlist"); loadWatch(); }
+    catch (e) { toast.error(apiError(e)); }
+  };
+  const unflag = async () => { try { await api.delete(`/watchlist/${watch.id}`); toast.success("Removed from watchlist"); loadWatch(); } catch (e) { toast.error(apiError(e)); } };
 
   if (err) return <div className="p-6 text-sm text-rose-300" data-testid="vessel-error">{err}</div>;
   if (!p) return <div className="p-6 font-mono text-xs text-slate-400" data-testid="vessel-loading">Loading vessel profile…</div>;
@@ -29,7 +40,13 @@ export default function VesselProfile() {
           <h1 className="font-display text-3xl font-extrabold tracking-tight sm:text-4xl flex items-center gap-3"><Ship size={28} color="#00F0FF" /> <span data-testid="vessel-name">{p.vessel_name || "UNKNOWN VESSEL"}</span></h1>
           {p.name_variants.length > 1 && <p className="mt-1 font-mono text-[11px] text-amber-300" data-testid="vessel-name-variants"><AlertTriangle size={11} className="inline mr-1" />name variants seen in AIS: {p.name_variants.join(" / ")}</p>}
         </div>
-        <p className="max-w-md text-[11px] text-slate-500" data-testid="vessel-disclaimer">{p.disclaimer}</p>
+        <div className="flex flex-col items-end gap-2">
+          {watch && <span data-testid="vessel-watchlist-badge" className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-wider" style={{ color: "#FF2A6D", background: "rgba(255,42,109,0.12)", border: "1px solid rgba(255,42,109,0.5)" }} title={watch.reason}><Eye size={11} /> on watchlist · {watch.severity}</span>}
+          {hasRole(user, "supervisor") && (watch
+            ? <button data-testid="btn-unflag-vessel" onClick={unflag} className="rounded border px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-slate-300 hover:text-white" style={{ borderColor: "var(--border-highlight)" }}>Remove from watchlist</button>
+            : <button data-testid="btn-flag-vessel" onClick={flag} className="inline-flex items-center gap-1.5 rounded px-3 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-wider text-slate-950" style={{ background: "#FF2A6D" }}><Eye size={12} /> Flag vessel</button>)}
+          <p className="max-w-md text-right text-[11px] text-slate-500" data-testid="vessel-disclaimer">{p.disclaimer}</p>
+        </div>
       </div>
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-5">
         <Kpi label="Case appearances" value={p.summary.appearances} color="#00F0FF" testId="vessel-kpi-appearances" />

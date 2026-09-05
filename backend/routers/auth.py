@@ -4,13 +4,15 @@ import os
 import re
 import secrets
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from pydantic import BaseModel
 
 from auth import (check_lockout, clear_failures, create_access_token, get_current_user, hash_password, public_user,
                   record_failure, require_role, verify_password, ROLES, ACCESS_HOURS)
 from db import db, clean, audit
-from emailer import send_email, reset_email_html, configured as email_configured
+from emailer import send_email, reset_email_html, test_email_html, record_test, configured as email_configured, get_config as get_email_config
 from models import LoginRequest, UserCreate, UserUpdate, ForgotPasswordRequest, ResetPasswordRequest, new_id
 
 logger = logging.getLogger("auth")
@@ -118,7 +120,8 @@ async def forgot_password(body: ForgotPasswordRequest, request: Request):
     token = secrets.token_urlsafe(32)
     now = datetime.now(timezone.utc)
     link = f"{os.environ['FRONTEND_URL'].rstrip('/')}/reset-password?token={token}"
-    sent = await send_email(email, "SentinelMar password reset", reset_email_html(user.get("name") or email, link))
+    sent_res = await send_email(email, "SentinelMar password reset", reset_email_html(user.get("name") or email, link))
+    sent = sent_res["sent"]
     delivery = "email" if sent else "logged"
     await db.password_reset_tokens.insert_one({
         "id": new_id(), "token_hash": hashlib.sha256(token.encode()).hexdigest(), "user_id": user["id"], "email": email,
@@ -147,4 +150,41 @@ async def reset_password(body: ResetPasswordRequest):
 @router.get("/auth/reset-requests")
 async def list_reset_requests(user=Depends(require_role("admin"))):
     rows = await db.password_reset_tokens.find({}, {"_id": 0, "token_hash": 0}).sort("created_at", -1).to_list(50)
-    return clean({"email_configured": email_configured(), "requests": rows})
+    return clean({"email_configured": await email_configured(), "requests": rows})
+
+
+class EmailSettings(BaseModel):
+    resend_api_key: Optional[str] = None
+    sender_email: Optional[str] = None
+    enabled: Optional[bool] = None
+
+
+def _mask(k: str) -> str:
+    return f"{k[:5]}…{k[-4:]}" if k and len(k) > 10 else ("set" if k else "")
+
+
+@router.get("/settings/email")
+async def get_email_settings(user=Depends(require_role("admin"))):
+    c = await get_email_config()
+    return clean({**c, "api_key": _mask(c["api_key"]), "configured": bool(c["api_key"]) and c["enabled"]})
+
+
+@router.put("/settings/email")
+async def put_email_settings(body: EmailSettings, user=Depends(require_role("admin"))):
+    update = {k: v for k, v in body.model_dump(exclude_none=True).items()}
+    if "resend_api_key" in update and update["resend_api_key"] == "":
+        update["resend_api_key"] = None
+    update.update({"updated_at": datetime.now(timezone.utc), "updated_by": user["email"]})
+    await db.settings.update_one({"key": "email"}, {"$set": update}, upsert=True)
+    await audit("settings", "email", "settings.email_updated", {k: ("***" if k == "resend_api_key" else v) for k, v in update.items()}, user["email"])
+    return await get_email_settings(user)
+
+
+@router.post("/settings/email/test")
+async def test_email_settings(user=Depends(require_role("admin"))):
+    res = await send_email(user["email"], "SentinelMar delivery test", test_email_html(user.get("name") or user["email"]))
+    await record_test(res, user["email"])
+    await audit("settings", "email", "settings.email_tested", res, user["email"])
+    if not res["sent"]:
+        raise HTTPException(400, res.get("error", "send failed"))
+    return {"ok": True, "to": user["email"], "id": res.get("id")}

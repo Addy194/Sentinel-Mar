@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { MapContainer, TileLayer, GeoJSON, Tooltip } from "react-leaflet";
 import { toast } from "sonner";
-import { Map as MapIcon, Plus, Trash2, RefreshCw } from "lucide-react";
-import { api, apiError, hasRole } from "@/lib/api";
+import { Map as MapIcon, Plus, Trash2, RefreshCw, Globe } from "lucide-react";
+import { api, apiError, hasRole, pollJob } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 
 const TYPE_COLOR = { eez: "#00F0FF", territorial: "#38BDF8", port_state: "#FFB703", custom: "#9D4EDD" };
@@ -15,9 +15,23 @@ export default function Zones() {
   const [zones, setZones] = useState([]);
   const [f, setF] = useState({ code: "", name: "", authority: "", country: "", zone_type: "eez", geometry: SAMPLE });
   const [busy, setBusy] = useState(false);
+  const [iso, setIso] = useState("NLD, GBR, DEU, DNK, BEL, NOR");
+  const [importing, setImporting] = useState(null);
   const admin = hasRole(user, "admin");
   const load = () => api.get("/jurisdictions").then((r) => setZones(r.data)).catch((e) => toast.error(apiError(e)));
   useEffect(() => { load(); }, []);
+
+  const importOfficial = async () => {
+    setImporting("queued…");
+    try {
+      const list = iso.split(/[,\s]+/).map((s) => s.trim().toUpperCase()).filter(Boolean);
+      const { data: job } = await api.post("/jurisdictions/import/marine-regions", { iso3: list, replace_demo: true });
+      const done = await pollJob(job.id, (j) => setImporting(`${j.status} · ${j.logs[j.logs.length - 1]?.msg || ""}`));
+      if (done.status === "succeeded") toast.success(`Imported ${done.result.imported.length} official EEZ boundaries; ${done.result.cases_resolved} cases re-resolved${done.result.failed.length ? ` · failed: ${done.result.failed.map((f) => f.iso3).join(", ")}` : ""}`);
+      else toast.error(`Import failed: ${done.error}`);
+      load();
+    } catch (e) { toast.error(apiError(e)); } finally { setImporting(null); }
+  };
 
   const create = async () => {
     setBusy(true);
@@ -63,9 +77,21 @@ export default function Zones() {
               </div>
               <div className="mt-1 text-slate-200">{z.name}</div>
               <div className="text-slate-400">{z.authority}{z.country ? ` · ${z.country}` : ""}</div>
+              <div className="mt-1 font-mono text-[10px]" style={{ color: z.official ? "#10B981" : "#FFB703" }} data-testid={`zone-source-${z.code}`}>{z.official ? `official · MRGID ${z.mrgid}` : "demo polygon — not official"}</div>
             </div>
           ))}
         </div>
+        {admin && (
+          <div className="mt-5 rounded border p-4" style={{ borderColor: "rgba(0,240,255,0.35)", background: "rgba(0,240,255,0.04)" }} data-testid="zone-import-form">
+            <div className="mb-2 flex items-center gap-2"><Globe size={14} color="#00F0FF" /><h2 className="font-display font-semibold">Import official EEZ boundaries</h2></div>
+            <p className="mb-2 text-[11px] text-slate-400">Marine Regions Maritime Boundaries v12 (200 NM EEZ) via WFS, simplified for map performance. Replaces the demo boxes and re-resolves every case.</p>
+            <input data-testid="zone-import-iso-input" className={inputCls} style={bd} value={iso} onChange={(e) => setIso(e.target.value)} placeholder="ISO3 codes, comma separated" />
+            <div className="mt-2 flex items-center gap-2">
+              <button data-testid="btn-import-eez" disabled={!!importing} onClick={importOfficial} className="inline-flex items-center gap-1.5 rounded bg-cyan-400 px-3 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-wider text-slate-950 hover:bg-cyan-300 disabled:opacity-50"><Globe size={12} /> {importing ? "Importing…" : "Import from Marine Regions"}</button>
+              {importing && <span className="font-mono text-[10px] text-cyan-300 truncate" data-testid="zone-import-status">{importing}</span>}
+            </div>
+          </div>
+        )}
         {admin && (
           <div className="mt-5 rounded border p-4" style={{ borderColor: "var(--border-default)" }} data-testid="zone-create-form">
             <div className="mb-3 flex items-center gap-2"><MapIcon size={14} color="#00F0FF" /><h2 className="font-display font-semibold">Add zone</h2></div>

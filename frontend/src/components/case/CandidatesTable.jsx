@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { ChevronDown, ChevronRight, AlertTriangle, History } from "lucide-react";
+import { ChevronDown, ChevronRight, AlertTriangle, History, Eye } from "lucide-react";
 import { StatusBadge, ScoreBar } from "@/components/StatusBadge";
 import { rankColor } from "@/components/case/CaseMap";
 import { fmtTime } from "@/lib/api";
@@ -27,6 +27,7 @@ export const CandidatesTable = ({ candidates, selected, onSelect }) => {
                   <span className="font-mono text-[10px] text-slate-400">MMSI {c.mmsi}{c.imo ? ` · IMO ${c.imo}` : ""}{c.vessel_type ? ` · ${c.vessel_type}` : ""}</span>
                   <Link to={`/vessels/${c.mmsi}`} data-testid={`vessel-history-link-${c.mmsi}`} onClick={(e) => e.stopPropagation()} title="Vessel history" className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[10px] text-cyan-300 hover:bg-cyan-400/10"><History size={11} /> history</Link>
                   {c.ais_flags?.length > 0 && <AlertTriangle size={12} color="#FFB703" title={c.ais_flags.join(", ")} />}
+                  {c.watchlist && <span data-testid={`watchlist-badge-${c.mmsi}`} title={c.watchlist.reason} className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider" style={{ color: "#FF2A6D", background: "rgba(255,42,109,0.12)", border: "1px solid rgba(255,42,109,0.5)" }}><Eye size={10} /> watchlist</span>}
                 </div>
                 <div className="mt-1.5 flex items-center gap-3">
                   <ScoreBar value={c.score} color={rankColor(c.rank)} testId={`candidate-score-bar-${c.mmsi}`} />

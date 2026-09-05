@@ -76,6 +76,9 @@ async def get_candidates(case_id: str, version: Optional[int] = None, include_tr
     if not include_tracks:
         for c in result["candidates"]:
             c.pop("track", None)
+    watch = {w["mmsi"]: w for w in await db.watchlist.find({"active": True}, {"_id": 0, "mmsi": 1, "reason": 1, "severity": 1, "id": 1}).to_list(1000)}
+    for c in result["candidates"]:
+        c["watchlist"] = watch.get(c["mmsi"])
     result.pop("processing_log", None)
     return clean({"case_id": case_id, **result, "attribution_status": case["attribution_status"], "review_state": case["review_state"],
                   "disclaimer": "Ranked candidates are decision-support output from AIS/satellite correlation, not a legal determination of responsibility."})

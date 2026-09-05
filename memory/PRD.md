@@ -32,8 +32,15 @@ POST/GET scenes, POST scenes/{id}/detect (mock), POST/GET spill-observations, PO
 - **Vessel history**: `GET /vessels/{mmsi}/profile` (appearances from latest result per case, decisions naming the vessel, AIS coverage summary, disclaimer); `/vessels/:mmsi` page linked from candidate rows and vessel list.
 - Tested: iteration_3 — 23/23 backend, all frontend flows pass, no issues.
 
+## Implemented (iteration 4)
+- **Official EEZ import**: `marine_regions.py` fetches Marine Regions WFS (eez by ISO3), repairs geometry (make_valid/unary_union/buffer(0), orient retry) for 2dsphere; `POST /jurisdictions/import-eez` (admin, 202 job) → zones flagged `official:true` + `mrgid`; re-resolves all cases. Zones page import panel + source labels.
+- **Email settings**: admin-only `GET/PUT /auth/email-settings`, `POST /auth/email-settings/test`; DB settings override env; key masked. Users page `EmailSettings` panel (badge CONFIGURED / NOT CONFIGURED). **Real delivery NOT configured** — no Resend key supplied; forgot-password falls back to logged links.
+- **Watchlist**: `routers/watchlist.py` (list any role; supervisor+ add/remove, severity whitelist, dup check); correlation enriches candidates with `watchlist{reason,severity}` and raises `watchlist_hit` alerts. `/watchlist` page, candidate badges, vessel-profile action.
+- **Case timeline & sharing**: `routers/timeline.py` — `GET /cases/{id}/timeline` (JSON) + `/timeline.html`; supervisor+ `POST /cases/{id}/share` (sha256 token, 1–720 h expiry, note) → public `GET /api/share/{token}` read-only HTML (uses FRONTEND_URL), view counter, revoke. `CaseTimeline` tab in case detail.
+- Tested: iteration_4 — 33/33 backend, all frontend flows pass, no issues.
+
 ## Backlog (prioritized)
-- P1: Add RESEND_API_KEY + verified sender to enable real reset emails; real object storage for scene imagery/evidence artifacts; retention policies; rate limiting; official EEZ boundary import (Marine Regions GeoJSON).
+- P1: Admin enters Resend API key + verified sender in Email Settings and sends a test email (delivery unverified); real object storage for scene imagery/evidence artifacts; retention policies; rate limiting; encrypt Resend key at rest.
 - P2: Additional met/ocean providers, replay testing harness, observability/metrics, SAR segmentation model once labeled data exists, separate worker process (Celery/Redis).
 
 ## Known limitations

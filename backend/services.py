@@ -204,4 +204,15 @@ async def handle_correlate(job):
         await db.alerts.insert_one(dict(alert))
         await audit("alert", alert["id"], "alert.raised", {"case_id": case_id, "version": version}, "system")
         await job_log(job["id"], "high-confidence alert raised")
+    watch = {w["mmsi"]: w for w in await db.watchlist.find({"active": True}, {"_id": 0}).to_list(1000)}
+    hits = [c for c in result["candidates"] if c["mmsi"] in watch]
+    for c in hits:
+        w = watch[c["mmsi"]]
+        alert = {"id": new_id(), "case_id": case_id, "case_number": case["case_number"], "severity": w.get("severity", "high"), "kind": "watchlist", "acknowledged": False,
+                 "mmsi": c["mmsi"], "vessel_name": c.get("vessel_name"), "watchlist_id": w["id"], "result_version": version, "created_at": now,
+                 "message": f"WATCHLIST vessel {c.get('vessel_name') or c['mmsi']} (MMSI {c['mmsi']}) ranked #{c['rank']} ({c['status']}, score {c['score']:.2f}) in {case['case_number']} — reason on watchlist: {w['reason']}"}
+        await db.alerts.insert_one(dict(alert))
+        await db.watchlist.update_one({"id": w["id"]}, {"$inc": {"hits": 1}, "$set": {"last_hit_case": case["case_number"], "last_hit_at": now}})
+        await audit("alert", alert["id"], "alert.watchlist_hit", {"case_id": case_id, "mmsi": c["mmsi"], "rank": c["rank"], "version": version}, "system")
+        await job_log(job["id"], f"watchlist hit: {c.get('vessel_name') or c['mmsi']} (#{c['rank']}) — alert raised", "warn")
     return {"result_id": doc["id"], "version": version, "overall_status": result["overall_status"], "candidates": len(result["candidates"])}
