@@ -29,7 +29,7 @@ export const trackPositionAt = (feature, t) => {
   return { lat: coords[i][1] + (coords[i + 1][1] - coords[i][1]) * f, lon: coords[i][0] + (coords[i + 1][0] - coords[i][0]) * f, idx: i, gap: ts[i + 1] - ts[i] > 2 * 3600e3 };
 };
 
-export const CaseMap = ({ geojson, selected, onSelect, showTracks = true, showCorridor = true, timeCursor = null, acquisitionTime = null }) => {
+export const CaseMap = ({ geojson, selected, onSelect, showTracks = true, showCorridor = true, timeCursor = null, acquisitionTime = null, zones = null }) => {
   const layers = useMemo(() => {
     const f = geojson?.features || [];
     return {
@@ -48,6 +48,11 @@ export const CaseMap = ({ geojson, selected, onSelect, showTracks = true, showCo
     <MapContainer center={[53.5, 3.8]} zoom={9} className="h-full w-full" zoomControl>
       <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; OpenStreetMap contributors' className="dark-tiles" />
       <FitBounds geojson={geojson} />
+      {zones?.features?.length > 0 && (
+        <GeoJSON key={`zones-${zones.features.length}`} data={zones}
+          style={(ft) => ({ color: ft.properties.zone_type === "port_state" ? "#FFB703" : "#38BDF8", weight: 1, opacity: 0.55, fillOpacity: 0.04, dashArray: "2,6" })}
+          onEachFeature={(ft, layer) => layer.bindTooltip(`${ft.properties.code} · ${ft.properties.authority}`, { sticky: true })} />
+      )}
       {showCorridor && layers.corridor.map((f, i) => (
         <GeoJSON key={`c${i}`} data={f} style={{ color: "#00F0FF", weight: 1, dashArray: "6,6", fillColor: "#00F0FF", fillOpacity: 0.05 }} />
       ))}

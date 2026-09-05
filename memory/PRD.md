@@ -25,9 +25,16 @@ POST/GET scenes, POST scenes/{id}/detect (mock), POST/GET spill-observations, PO
 - **Time scrubber**: map slider/play replaying AIS tracks (interpolated heads, AIS-gap dashed markers, spill dimmed before satellite pass); GeoJSON tracks now carry timestamps/sog/cog.
 - Tested: iteration_2 — 16/16 backend, all frontend flows pass. Fixed lockout identifier, scrubber setState warning, users loading state.
 
+## Implemented (iteration 3)
+- **Password reset**: `POST /auth/forgot-password` (generic response, no enumeration) → single-use sha256-hashed token, 60 min expiry; `POST /auth/reset-password`; Resend email via `emailer.py` (RESEND_API_KEY empty → link logged server-side and shown to admins at `GET /auth/reset-requests` / Users page "copy link"). Clears lockouts on reset. Pages `/forgot-password`, `/reset-password`.
+- **CSV AIS upload**: `csv_ingest.py` header alias auto-detection, delimiter sniffing, timestamp parsing (ISO/epoch/common formats); `POST /ais/csv/preview` + `POST /ais/csv/ingest` (multipart, optional mapping JSON, row-level errors, dedup via existing pipeline). Drag-and-drop `CsvUpload` component with mapping selects on Ingestion page.
+- **Jurisdiction zones**: `jurisdictions` collection (2dsphere), seeded simplified North Sea EEZs + Rotterdam port-state box (demo, not official); admin CRUD `/jurisdictions`, `/jurisdictions/geojson`, `resolve-all`, `/cases/{id}/jurisdiction/resolve`. Cases get `jurisdictions[]` + `primary_jurisdiction` (centroid containment, port_state > territorial > eez) on creation; shown on dashboard, case chip, case map layer, PDF. `/zones` page with map + admin form.
+- **Vessel history**: `GET /vessels/{mmsi}/profile` (appearances from latest result per case, decisions naming the vessel, AIS coverage summary, disclaimer); `/vessels/:mmsi` page linked from candidate rows and vessel list.
+- Tested: iteration_3 — 23/23 backend, all frontend flows pass, no issues.
+
 ## Backlog (prioritized)
-- P1: Real object storage for scene imagery/evidence artifacts; jurisdiction boundary config; retention policies; CSV AIS upload; rate limiting; password reset flow.
-- P2: Additional met/ocean providers, replay testing harness, observability/metrics, SAR segmentation model integration once labeled data exists, separate worker process (Celery/Redis).
+- P1: Add RESEND_API_KEY + verified sender to enable real reset emails; real object storage for scene imagery/evidence artifacts; retention policies; rate limiting; official EEZ boundary import (Marine Regions GeoJSON).
+- P2: Additional met/ocean providers, replay testing harness, observability/metrics, SAR segmentation model once labeled data exists, separate worker process (Celery/Redis).
 
 ## Known limitations
 - Mock detector is a placeholder (MOCKED by design). Drift model is a simple 3%-wind + current linear back-projection. No encryption/RBAC yet.

@@ -4,6 +4,8 @@ import { toast } from "sonner";
 import { Satellite, Waves, Radio, Scan } from "lucide-react";
 import { api, fmtTime, pollJob } from "@/lib/api";
 
+import { CsvUpload } from "@/components/ingest/CsvUpload";
+
 const inputCls = "w-full rounded border bg-slate-900/60 px-2.5 py-1.5 font-mono text-xs text-slate-100 outline-none focus:border-cyan-400/60";
 const bd = { borderColor: "var(--border-highlight)" };
 const Field = ({ label, children }) => <label className="block"><span className="label-mono mb-1 block">{label}</span>{children}</label>;
@@ -57,7 +59,7 @@ export default function Ingest() {
             <thead><tr className="label-mono text-left">{["MMSI", "Name", "Type", "Fixes", "Last seen", "Flags"].map((h) => <th key={h} className="px-4 py-2 font-normal">{h}</th>)}</tr></thead>
             <tbody>{vessels.map((v) => (
               <tr key={v.mmsi} data-testid={`vessel-row-${v.mmsi}`} className="border-t" style={{ borderColor: "var(--border-default)" }}>
-                <td className="px-4 py-2 font-mono text-cyan-300">{v.mmsi}</td><td className="px-4 py-2">{v.vessel_name || <span className="text-slate-500">unknown</span>}</td>
+                <td className="px-4 py-2 font-mono text-cyan-300"><button data-testid={`vessel-link-${v.mmsi}`} onClick={() => nav(`/vessels/${v.mmsi}`)} className="hover:underline">{v.mmsi}</button></td><td className="px-4 py-2">{v.vessel_name || <span className="text-slate-500">unknown</span>}</td>
                 <td className="px-4 py-2 text-slate-400">{v.vessel_type || "—"}</td><td className="px-4 py-2 font-mono">{v.fixes}</td>
                 <td className="px-4 py-2 font-mono text-slate-400">{fmtTime(v.last_seen)}</td><td className="px-4 py-2 font-mono text-[10px] text-amber-300">{v.quality_flags.join(", ")}</td>
               </tr>))}</tbody>
@@ -162,6 +164,7 @@ const SpillForm = ({ scenes, onDone }) => {
 };
 
 const AisForm = ({ onDone }) => {
+  const [mode, setMode] = useState("csv");
   const [txt, setTxt] = useState(SAMPLE_AIS);
   const [res, setRes] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -172,11 +175,20 @@ const AisForm = ({ onDone }) => {
   };
   return (
     <Card icon={Radio} title="AIS batch ingest" sub="Deduplicated by MMSI/time/position. Quality checks flag naive timestamps, implausible speed, invalid MMSI, missing identity." testId="ais-form">
-      <Field label="JSON payload {positions: [...]}"><textarea data-testid="input-ais-json" rows={14} className={inputCls} style={bd} value={txt} onChange={(e) => setTxt(e.target.value)} /></Field>
-      <div className="mt-2.5 flex items-center gap-3">
-        <Btn data-testid="btn-ingest-ais" disabled={busy} onClick={submit}>{busy ? "Ingesting…" : "Ingest batch"}</Btn>
-        {res && <span className="font-mono text-[11px] text-slate-300" data-testid="ais-ingest-result">received {res.received} · inserted <span className="text-emerald-300">{res.inserted}</span> · dup <span className="text-amber-300">{res.duplicates}</span> · flagged {res.flagged} · rejected {res.rejected.length}</span>}
+      <div className="mb-3 flex gap-1">
+        {[["csv", "CSV upload"], ["json", "JSON payload"]].map(([m, l]) => (
+          <button key={m} data-testid={`ais-mode-${m}`} onClick={() => setMode(m)} className={`rounded-full px-3 py-1 font-mono text-[10px] uppercase tracking-wider transition-colors ${mode === m ? "bg-cyan-400/15 text-cyan-300 border border-cyan-400/40" : "text-slate-400 border border-slate-700 hover:text-slate-100"}`}>{l}</button>
+        ))}
       </div>
+      {mode === "csv" ? <CsvUpload onDone={onDone} /> : (
+        <>
+          <Field label="JSON payload {positions: [...]}"><textarea data-testid="input-ais-json" rows={14} className={inputCls} style={bd} value={txt} onChange={(e) => setTxt(e.target.value)} /></Field>
+          <div className="mt-2.5 flex items-center gap-3">
+            <Btn data-testid="btn-ingest-ais" disabled={busy} onClick={submit}>{busy ? "Ingesting…" : "Ingest batch"}</Btn>
+            {res && <span className="font-mono text-[11px] text-slate-300" data-testid="ais-ingest-result">received {res.received} · inserted <span className="text-emerald-300">{res.inserted}</span> · dup <span className="text-amber-300">{res.duplicates}</span> · flagged {res.flagged} · rejected {res.rejected.length}</span>}
+          </div>
+        </>
+      )}
     </Card>
   );
 };

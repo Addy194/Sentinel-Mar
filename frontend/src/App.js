@@ -10,6 +10,9 @@ import Ingest from "@/pages/Ingest";
 import Jobs from "@/pages/Jobs";
 import Login from "@/pages/Login";
 import Users from "@/pages/Users";
+import Zones from "@/pages/Zones";
+import VesselProfile from "@/pages/VesselProfile";
+import { ForgotPassword, ResetPassword } from "@/pages/PasswordReset";
 
 const Protected = ({ children, role }) => {
   const { user } = useAuth();
@@ -27,9 +30,13 @@ function App() {
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<Login />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
             <Route element={<Protected><Layout /></Protected>}>
               <Route path="/" element={<Dashboard />} />
               <Route path="/cases/:id" element={<CaseDetail />} />
+              <Route path="/vessels/:mmsi" element={<VesselProfile />} />
+              <Route path="/zones" element={<Zones />} />
               <Route path="/ingest" element={<Ingest />} />
               <Route path="/jobs" element={<Jobs />} />
               <Route path="/users" element={<Protected role="admin"><Users /></Protected>} />

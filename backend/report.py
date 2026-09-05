@@ -100,6 +100,8 @@ def build_pdf(bundle: dict) -> bytes:
         ["Review state", case["review_state"], "Confirmed vessel MMSI", _fmt(case.get("confirmed_vessel_mmsi"))],
         ["Acquisition (UTC)", _fmt(case["acquisition_time"]), "Result version", str(case.get("latest_result_version", 0))],
         ["Degraded (no drift inputs)", _fmt(case.get("degraded")), "Case status", case["status"]],
+        ["Primary jurisdiction", f"{case['primary_jurisdiction']['code']} — {case['primary_jurisdiction']['authority']}" if case.get("primary_jurisdiction") else "unassigned",
+         "Other zones intersected", ", ".join(z["code"] for z in (case.get("jurisdictions") or []) if not case.get("primary_jurisdiction") or z["code"] != case["primary_jurisdiction"]["code"]) or "—"],
     ], [W * 0.2, W * 0.3, W * 0.22, W * 0.28], header=False))
 
     el.append(Paragraph("2. Spill observation & source references", h2))

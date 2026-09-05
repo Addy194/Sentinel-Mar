@@ -26,10 +26,12 @@ export default function CaseDetail() {
   const [showTracks, setShowTracks] = useState(true);
   const [cursor, setCursor] = useState(null);
   const [pdfBusy, setPdfBusy] = useState(false);
+  const [zones, setZones] = useState(null);
+  const [showZones, setShowZones] = useState(true);
 
   const load = useCallback(async () => {
-    const [a, b, g, e, cfg] = await Promise.all([api.get(`/cases/${id}`), api.get(`/cases/${id}/candidates`), api.get(`/cases/${id}/geojson`), api.get(`/cases/${id}/evidence`), api.get("/config/defaults")]);
-    setC(a.data); setCands(b.data); setGeo(g.data); setEvidence(e.data); setConfig(cfg.data);
+    const [a, b, g, e, cfg, z] = await Promise.all([api.get(`/cases/${id}`), api.get(`/cases/${id}/candidates`), api.get(`/cases/${id}/geojson`), api.get(`/cases/${id}/evidence`), api.get("/config/defaults"), api.get("/jurisdictions/geojson")]);
+    setC(a.data); setCands(b.data); setGeo(g.data); setEvidence(e.data); setConfig(cfg.data); setZones(z.data);
   }, [id]);
   useEffect(() => { load().catch((e) => toast.error(apiError(e))); }, [load]);
 
@@ -50,10 +52,11 @@ export default function CaseDetail() {
   return (
     <div className="flex h-full overflow-hidden" data-testid="case-detail">
       <div className="relative flex-1">
-        <CaseMap geojson={geo} selected={selected} onSelect={setSelected} showTracks={showTracks} timeCursor={cursor} acquisitionTime={c.acquisition_time} />
+        <CaseMap geojson={geo} selected={selected} onSelect={setSelected} showTracks={showTracks} timeCursor={cursor} acquisitionTime={c.acquisition_time} zones={showZones ? zones : null} />
         <div className="absolute left-3 top-3 z-[1000] flex items-center gap-2">
           <Link to="/" data-testid="back-to-dashboard" className="inline-flex items-center gap-1 rounded px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-wider text-slate-200" style={overlayBtn}><ArrowLeft size={12} /> Cases</Link>
           <button data-testid="map-toggle-ais-layer" onClick={() => setShowTracks(!showTracks)} className="inline-flex items-center gap-1 rounded px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-wider" style={{ ...overlayBtn, color: showTracks ? "#00F0FF" : "#94A3B8" }}><Layers size={12} /> AIS tracks</button>
+          <button data-testid="map-toggle-zones-layer" onClick={() => setShowZones(!showZones)} className="inline-flex items-center gap-1 rounded px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-wider" style={{ ...overlayBtn, color: showZones ? "#00F0FF" : "#94A3B8" }}><Layers size={12} /> Zones</button>
           <button data-testid="btn-export-geojson" onClick={exportGeo} className="inline-flex items-center gap-1 rounded px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-wider text-slate-200" style={overlayBtn}><Download size={12} /> GeoJSON</button>
           <button data-testid="btn-export-pdf" disabled={pdfBusy} onClick={exportPdf} className="inline-flex items-center gap-1 rounded px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-wider disabled:opacity-50" style={{ ...overlayBtn, color: "#FFB703" }}><FileText size={12} /> {pdfBusy ? "Building…" : "Evidence PDF"}</button>
         </div>
@@ -84,6 +87,9 @@ export default function CaseDetail() {
             </div>
           </div>
           <div className="mt-2 flex flex-wrap gap-1.5">
+            {c.primary_jurisdiction && <span data-testid="case-jurisdiction-chip" title={c.primary_jurisdiction.name} className="rounded px-1.5 py-0.5 font-mono text-[10px] text-cyan-300" style={{ background: "rgba(0,240,255,0.08)", border: "1px solid rgba(0,240,255,0.35)" }}>⚖ {c.primary_jurisdiction.code} · {c.primary_jurisdiction.authority}</span>}
+            {c.jurisdictions?.filter((z) => z.code !== c.primary_jurisdiction?.code).map((z) => <span key={z.code} data-testid={`case-jurisdiction-other-${z.code}`} className="rounded px-1.5 py-0.5 font-mono text-[10px] text-slate-400" style={{ border: "1px solid var(--border-highlight)" }}>also {z.code} ({Math.round(z.overlap_fraction * 100)}%)</span>)}
+            {!c.primary_jurisdiction && <span data-testid="case-jurisdiction-none" className="rounded px-1.5 py-0.5 font-mono text-[10px] text-slate-500" style={{ border: "1px solid var(--border-highlight)" }}>jurisdiction unassigned</span>}
             {spill?.quality_flags?.map((f) => <span key={f} data-testid={`spill-flag-${f}`} className="rounded px-1.5 py-0.5 font-mono text-[10px] text-amber-300" style={{ background: "rgba(255,183,3,0.12)", border: "1px solid rgba(255,183,3,0.4)" }}>{f}</span>)}
             {cands?.degraded && <span data-testid="degraded-flag" className="rounded px-1.5 py-0.5 font-mono text-[10px] text-purple-300" style={{ background: "rgba(157,78,221,0.12)", border: "1px solid rgba(157,78,221,0.4)" }}>degraded: no drift inputs</span>}
             {cands?.ambiguous_multiple_vessels && <span data-testid="ambiguous-flag" className="rounded px-1.5 py-0.5 font-mono text-[10px] text-amber-300" style={{ background: "rgba(255,183,3,0.12)", border: "1px solid rgba(255,183,3,0.4)" }}>multiple-vessel ambiguity</span>}

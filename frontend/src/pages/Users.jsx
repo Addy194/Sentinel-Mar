@@ -11,9 +11,10 @@ const ROLE_COLOR = { analyst: "#00F0FF", supervisor: "#FFB703", admin: "#FF2A6D"
 export default function Users() {
   const { user: me } = useAuth();
   const [users, setUsers] = useState(null);
+  const [resets, setResets] = useState(null);
   const [f, setF] = useState({ email: "", name: "", role: "analyst", password: "" });
   const [busy, setBusy] = useState(false);
-  const load = () => api.get("/users").then((r) => setUsers(r.data)).catch((e) => { setUsers([]); toast.error(apiError(e)); });
+  const load = () => Promise.all([api.get("/users"), api.get("/auth/reset-requests")]).then(([u, r]) => { setUsers(u.data); setResets(r.data); }).catch((e) => { setUsers([]); toast.error(apiError(e)); });
   useEffect(() => { load(); }, []);
 
   const create = async () => {
@@ -78,6 +79,32 @@ export default function Users() {
             </tbody>
           </table>
         </div>
+      </div>
+      <div className="panel mt-4 overflow-hidden fade-up" data-testid="reset-requests">
+        <div className="flex items-center justify-between border-b px-4 py-3" style={{ borderColor: "var(--border-default)" }}>
+          <h2 className="font-display font-semibold">Password reset requests</h2>
+          <span className="font-mono text-[10px] uppercase tracking-wider" style={{ color: resets?.email_configured ? "#10B981" : "#FFB703" }} data-testid="email-delivery-status">
+            {resets?.email_configured ? "email delivery: Resend configured" : "email delivery not configured — hand links to users manually (set RESEND_API_KEY)"}
+          </span>
+        </div>
+        <table className="w-full text-xs">
+          <thead><tr className="label-mono text-left">{["Requested", "Email", "Delivery", "Status", "Link"].map((h) => <th key={h} className="px-4 py-2 font-normal">{h}</th>)}</tr></thead>
+          <tbody>
+            {(resets?.requests || []).map((r) => {
+              const expired = new Date(r.expires_at) < new Date();
+              return (
+                <tr key={r.id} data-testid={`reset-request-${r.id}`} className="border-t" style={{ borderColor: "var(--border-default)" }}>
+                  <td className="px-4 py-2 font-mono text-slate-400">{fmtTime(r.created_at)}</td>
+                  <td className="px-4 py-2 font-mono text-slate-200">{r.email}</td>
+                  <td className="px-4 py-2 font-mono text-[10px] uppercase" style={{ color: r.delivery === "email" ? "#10B981" : "#FFB703" }}>{r.delivery}</td>
+                  <td className="px-4 py-2 font-mono text-[10px] uppercase text-slate-400">{r.used ? "used" : expired ? "expired" : "pending"}</td>
+                  <td className="px-4 py-2">{r.link && !r.used && !expired ? <button data-testid={`copy-reset-link-${r.id}`} onClick={() => { navigator.clipboard?.writeText(r.link); toast.success("Reset link copied"); }} className="font-mono text-[10px] uppercase tracking-wider text-cyan-300 hover:underline">copy link</button> : <span className="text-slate-600">—</span>}</td>
+                </tr>
+              );
+            })}
+            {resets && resets.requests.length === 0 && <tr><td colSpan={5} className="px-4 py-5 text-center text-slate-500">No reset requests.</td></tr>}
+          </tbody>
+        </table>
       </div>
     </div>
   );

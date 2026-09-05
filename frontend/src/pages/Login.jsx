@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Navigate, useLocation, useNavigate } from "react-router-dom";
+import { Navigate, useLocation, useNavigate, Link } from "react-router-dom";
 import { Radar, LogIn, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
@@ -59,6 +59,7 @@ export default function Login() {
           <button data-testid="login-submit-button" disabled={busy} type="submit" className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded bg-cyan-400 px-4 py-2 font-mono text-xs font-semibold uppercase tracking-wider text-slate-950 hover:bg-cyan-300 disabled:opacity-50">
             <LogIn size={14} /> {busy ? "Signing in…" : "Sign in"}
           </button>
+          <Link to="/forgot-password" data-testid="forgot-password-link" className="mt-3 block text-center font-mono text-[11px] uppercase tracking-wider text-slate-400 hover:text-cyan-300">Forgot password?</Link>
           <div className="mt-6 border-t pt-4" style={{ borderColor: "var(--border-default)" }}>
             <p className="label-mono mb-2">Demo accounts</p>
             <div className="space-y-1.5">

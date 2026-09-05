@@ -93,6 +93,8 @@ async def upsert_user(email: str, password: str, name: str, role: str):
 async def seed_users():
     await db.users.create_index("email", unique=True)
     await db.login_attempts.create_index("identifier")
+    await db.password_reset_tokens.create_index("expires_at", expireAfterSeconds=86400)
+    await db.password_reset_tokens.create_index("token_hash")
     await upsert_user(os.environ["ADMIN_EMAIL"], os.environ["ADMIN_PASSWORD"], "System Administrator", "admin")
     await upsert_user(os.environ["DEMO_SUPERVISOR_EMAIL"], os.environ["DEMO_SUPERVISOR_PASSWORD"], "Duty Supervisor", "supervisor")
     await upsert_user(os.environ["DEMO_ANALYST_EMAIL"], os.environ["DEMO_ANALYST_PASSWORD"], "Marine Analyst", "analyst")

@@ -145,6 +145,15 @@ class UserUpdate(BaseModel):
     password: Optional[str] = Field(default=None, min_length=8)
 
 
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str = Field(min_length=16)
+    new_password: str = Field(min_length=8)
+
+
 class CaseUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     title: Optional[str] = None

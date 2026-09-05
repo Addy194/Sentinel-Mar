@@ -1,12 +1,19 @@
-from datetime import datetime, timezone
+import hashlib
+import logging
+import os
+import re
+import secrets
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
 from auth import (check_lockout, clear_failures, create_access_token, get_current_user, hash_password, public_user,
                   record_failure, require_role, verify_password, ROLES, ACCESS_HOURS)
 from db import db, clean, audit
-from models import LoginRequest, UserCreate, UserUpdate, new_id
+from emailer import send_email, reset_email_html, configured as email_configured
+from models import LoginRequest, UserCreate, UserUpdate, ForgotPasswordRequest, ResetPasswordRequest, new_id
 
+logger = logging.getLogger("auth")
 router = APIRouter()
 
 
@@ -96,3 +103,48 @@ async def delete_user(user_id: str, user=Depends(require_role("admin"))):
         raise HTTPException(404, "user not found")
     await audit("user", user_id, "user.deleted", {}, user["email"])
     return {"ok": True}
+
+
+GENERIC_MSG = "If that account exists, a reset link has been issued. Check your inbox (or ask an administrator if email delivery is not configured)."
+
+
+@router.post("/auth/forgot-password")
+async def forgot_password(body: ForgotPasswordRequest, request: Request):
+    email = body.email.lower().strip()
+    user = await db.users.find_one({"email": email})
+    if not user:
+        await audit("user", "unknown", "auth.reset_requested_unknown_email", {"email": email}, email)
+        return {"message": GENERIC_MSG, "delivery": "none"}
+    token = secrets.token_urlsafe(32)
+    now = datetime.now(timezone.utc)
+    link = f"{os.environ['FRONTEND_URL'].rstrip('/')}/reset-password?token={token}"
+    sent = await send_email(email, "SentinelMar password reset", reset_email_html(user.get("name") or email, link))
+    delivery = "email" if sent else "logged"
+    await db.password_reset_tokens.insert_one({
+        "id": new_id(), "token_hash": hashlib.sha256(token.encode()).hexdigest(), "user_id": user["id"], "email": email,
+        "expires_at": now + timedelta(hours=1), "used": False, "delivery": delivery, "link": None if sent else link,
+        "requested_ip": (request.headers.get("x-forwarded-for") or (request.client.host if request.client else "")).split(",")[0].strip(), "created_at": now})
+    if not sent:
+        logger.warning("PASSWORD RESET LINK for %s (email not configured): %s", email, link)
+    await audit("user", user["id"], "auth.reset_requested", {"delivery": delivery}, email)
+    return {"message": GENERIC_MSG, "delivery": delivery}
+
+
+@router.post("/auth/reset-password")
+async def reset_password(body: ResetPasswordRequest):
+    rec = await db.password_reset_tokens.find_one({"token_hash": hashlib.sha256(body.token.encode()).hexdigest()})
+    if not rec or rec.get("used"):
+        raise HTTPException(400, "Reset link is invalid or has already been used")
+    if rec["expires_at"].replace(tzinfo=timezone.utc) < datetime.now(timezone.utc):
+        raise HTTPException(400, "Reset link has expired — request a new one")
+    await db.users.update_one({"id": rec["user_id"]}, {"$set": {"password_hash": hash_password(body.new_password), "password_changed_at": datetime.now(timezone.utc)}})
+    await db.password_reset_tokens.update_one({"id": rec["id"]}, {"$set": {"used": True, "used_at": datetime.now(timezone.utc), "link": None}})
+    await db.login_attempts.delete_many({"identifier": {"$regex": f":{re.escape(rec['email'])}$"}})
+    await audit("user", rec["user_id"], "auth.password_reset", {"via": "reset_link"}, rec["email"])
+    return {"ok": True, "email": rec["email"]}
+
+
+@router.get("/auth/reset-requests")
+async def list_reset_requests(user=Depends(require_role("admin"))):
+    rows = await db.password_reset_tokens.find({}, {"_id": 0, "token_hash": 0}).sort("created_at", -1).to_list(50)
+    return clean({"email_configured": email_configured(), "requests": rows})

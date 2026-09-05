@@ -65,7 +65,7 @@ export default function Dashboard() {
           <table className="w-full text-sm">
             <thead>
               <tr className="label-mono text-left">
-                {["Case", "Acquired (UTC)", "Source", "Det. conf", "Attribution", "Band", "Top score", "Candidates", "Review"].map((h) => (
+                {["Case", "Acquired (UTC)", "Source", "Jurisdiction", "Det. conf", "Attribution", "Band", "Top score", "Candidates", "Review"].map((h) => (
                   <th key={h} className="px-4 py-2 font-normal">{h}</th>
                 ))}
               </tr>
@@ -77,6 +77,7 @@ export default function Dashboard() {
                   <td className="px-4 py-3 font-mono text-cyan-300">{c.case_number}</td>
                   <td className="px-4 py-3 font-mono text-xs text-slate-300">{fmtTime(c.acquisition_time)}</td>
                   <td className="px-4 py-3 text-xs text-slate-400">{c.source}</td>
+                  <td className="px-4 py-3 font-mono text-[10px]" data-testid={`case-jurisdiction-${c.case_number}`} title={c.primary_jurisdiction?.authority}>{c.primary_jurisdiction ? <span className="text-cyan-300">{c.primary_jurisdiction.code}</span> : <span className="text-slate-500">unassigned</span>}</td>
                   <td className="px-4 py-3 font-mono text-xs">{pct(c.detection_confidence)}{c.quality_flags?.length > 0 && <span className="ml-1 text-amber-400" title={c.quality_flags.join(", ")}>⚑</span>}</td>
                   <td className="px-4 py-3"><StatusBadge status={c.attribution_status} testId={`case-status-${c.case_number}`} /></td>
                   <td className="px-4 py-3"><BandBadge band={c.confidence_band} /></td>
@@ -85,7 +86,7 @@ export default function Dashboard() {
                   <td className="px-4 py-3 font-mono text-[10px] uppercase tracking-wider text-slate-400">{c.review_state}</td>
                 </tr>
               ))}
-              {shown.length === 0 && <tr><td colSpan={9} className="px-4 py-8 text-center text-slate-500" data-testid="cases-empty">No cases match this filter.</td></tr>}
+              {shown.length === 0 && <tr><td colSpan={10} className="px-4 py-8 text-center text-slate-500" data-testid="cases-empty">No cases match this filter.</td></tr>}
             </tbody>
           </table>
         </div>

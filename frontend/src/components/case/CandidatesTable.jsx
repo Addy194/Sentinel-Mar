@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { ChevronDown, ChevronRight, AlertTriangle } from "lucide-react";
+import { Link } from "react-router-dom";
+import { ChevronDown, ChevronRight, AlertTriangle, History } from "lucide-react";
 import { StatusBadge, ScoreBar } from "@/components/StatusBadge";
 import { rankColor } from "@/components/case/CaseMap";
 import { fmtTime } from "@/lib/api";
@@ -21,9 +22,10 @@ export const CandidatesTable = ({ candidates, selected, onSelect }) => {
             <div className="flex cursor-pointer items-center gap-3 px-4 py-3" onClick={() => { onSelect?.(c.mmsi); setOpen(isOpen ? null : c.mmsi); }}>
               <span className="grid h-7 w-7 shrink-0 place-items-center rounded font-mono text-xs font-bold" style={{ background: `${rankColor(c.rank)}22`, color: rankColor(c.rank), border: `1px solid ${rankColor(c.rank)}66` }}>{c.rank}</span>
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="truncate font-display font-semibold">{c.vessel_name || "UNKNOWN"}</span>
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                  <span className="font-display font-semibold">{c.vessel_name || "UNKNOWN"}</span>
                   <span className="font-mono text-[10px] text-slate-400">MMSI {c.mmsi}{c.imo ? ` · IMO ${c.imo}` : ""}{c.vessel_type ? ` · ${c.vessel_type}` : ""}</span>
+                  <Link to={`/vessels/${c.mmsi}`} data-testid={`vessel-history-link-${c.mmsi}`} onClick={(e) => e.stopPropagation()} title="Vessel history" className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[10px] text-cyan-300 hover:bg-cyan-400/10"><History size={11} /> history</Link>
                   {c.ais_flags?.length > 0 && <AlertTriangle size={12} color="#FFB703" title={c.ais_flags.join(", ")} />}
                 </div>
                 <div className="mt-1.5 flex items-center gap-3">

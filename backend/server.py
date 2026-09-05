@@ -8,8 +8,9 @@ from starlette.middleware.cors import CORSMiddleware
 from db import db, client, ensure_indexes
 import jobs
 import services  # noqa: F401  (registers job handlers)
-from routers import ingest, cases, system, auth as auth_router
+from routers import ingest, cases, system, auth as auth_router, jurisdictions
 from auth import seed_users, require_role
+from jurisdiction import seed_zones, apply_to_case
 from seed import seed_demo
 from correlation import ALGORITHM_VERSION
 
@@ -21,10 +22,14 @@ logger = logging.getLogger("sentinelmar")
 async def lifespan(app: FastAPI):
     await ensure_indexes()
     await seed_users()
+    zones_added = await seed_zones()
     jobs.start()
     try:
         res = await seed_demo()
         logger.info("seed: %s", res)
+        if zones_added:
+            for c in await db.cases.find({"primary_jurisdiction": {"$exists": False}}, {"id": 1}).to_list(1000):
+                await apply_to_case(c["id"], "system")
     except Exception:
         logger.exception("seed failed")
     yield
@@ -46,6 +51,7 @@ async def reseed(user=Depends(require_role("admin"))):
 
 
 api.include_router(auth_router.router)
+api.include_router(jurisdictions.router)
 api.include_router(ingest.router)
 api.include_router(cases.router)
 api.include_router(system.router)

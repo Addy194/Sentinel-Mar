@@ -56,8 +56,15 @@ async def create_spill_observation(payload: SpillObservationCreate, actor="syste
         "created_at": now, "updated_at": now,
     }
     await db.cases.insert_one(dict(case))
+    try:
+        from jurisdiction import resolve_jurisdictions
+        zones, primary = await resolve_jurisdictions(doc["geometry"], doc["centroid"])
+        await db.cases.update_one({"id": case_id}, {"$set": {"jurisdictions": zones, "primary_jurisdiction": primary, "jurisdiction_resolved_at": now}})
+        case.update({"jurisdictions": zones, "primary_jurisdiction": primary})
+    except Exception as e:  # noqa: BLE001
+        case.update({"jurisdictions": [], "primary_jurisdiction": None, "jurisdiction_error": str(e)})
     await audit("spill_observation", spill_id, "spill.created", {"case_id": case_id, "source": payload.source, "processing_version": payload.processing_version}, actor)
-    await audit("case", case_id, "case.opened", {"spill_observation_id": spill_id}, actor)
+    await audit("case", case_id, "case.opened", {"spill_observation_id": spill_id, "primary_jurisdiction": (case.get("primary_jurisdiction") or {}).get("code")}, actor)
     doc.pop("_id", None)
     case.pop("_id", None)
     return doc, case

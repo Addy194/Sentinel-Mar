@@ -91,6 +91,7 @@ pyflakes==3.4.0
 Pygments==2.21.0
 PyJWT==2.13.0
 pymongo==4.6.3
+pymupdf==1.28.2
 pyparsing==3.3.2
 pytest==9.1.1
 pytest-xdist==3.8.0
@@ -105,6 +106,7 @@ regex==2026.9.3
 reportlab==5.0.1
 requests==2.34.2
 requests-oauthlib==2.0.0
+resend==2.43.0
 rich==15.0.0
 rpds-py==2026.6.3
 rsa==4.9.1
