@@ -1,15 +1,19 @@
 import { useEffect, useState } from "react";
-import { NavLink, Outlet } from "react-router-dom";
-import { Radar, LayoutDashboard, Satellite, Activity, ShieldAlert } from "lucide-react";
-import { api } from "@/lib/api";
+import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { Radar, LayoutDashboard, Satellite, Activity, ShieldAlert, Users as UsersIcon, LogOut } from "lucide-react";
+import { api, hasRole } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
 
 const links = [
   { to: "/", label: "Surveillance", icon: LayoutDashboard, id: "nav-dashboard-link" },
   { to: "/ingest", label: "Ingestion", icon: Satellite, id: "nav-ingest-link" },
   { to: "/jobs", label: "Jobs & Alerts", icon: Activity, id: "nav-jobs-link" },
 ];
+const ROLE_COLOR = { analyst: "#00F0FF", supervisor: "#FFB703", admin: "#FF2A6D" };
 
 export const Layout = () => {
+  const { user, logout } = useAuth();
+  const nav = useNavigate();
   const [clock, setClock] = useState(new Date());
   const [stats, setStats] = useState(null);
   useEffect(() => {
@@ -36,6 +40,11 @@ export const Layout = () => {
               <Icon size={14} /> {label}
             </NavLink>
           ))}
+          {hasRole(user, "admin") && (
+            <NavLink to="/users" data-testid="nav-users-link" className={({ isActive }) => `flex items-center gap-2 rounded-md px-3 py-1.5 text-sm transition-colors ${isActive ? "bg-slate-800 text-cyan-300" : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-100"}`}>
+              <UsersIcon size={14} /> Users
+            </NavLink>
+          )}
         </nav>
         <div className="ml-auto flex items-center gap-6">
           {stats && (
@@ -50,6 +59,15 @@ export const Layout = () => {
             <span className="pulse-dot" />
             {clock.toISOString().replace("T", " ").slice(0, 19)} UTC
           </div>
+          {user && (
+            <div className="flex items-center gap-2 border-l pl-4" style={{ borderColor: "var(--border-default)" }} data-testid="user-chip">
+              <div className="text-right leading-tight">
+                <div className="text-xs text-slate-200" data-testid="user-name">{user.name}</div>
+                <div className="font-mono text-[10px] uppercase tracking-wider" style={{ color: ROLE_COLOR[user.role] }} data-testid="user-role">{user.role}</div>
+              </div>
+              <button data-testid="logout-button" onClick={async () => { await logout(); nav("/login"); }} title="Sign out" className="rounded p-1.5 text-slate-400 hover:bg-slate-800 hover:text-slate-100"><LogOut size={14} /></button>
+            </div>
+          )}
         </div>
       </header>
       <main className="flex-1 overflow-hidden">

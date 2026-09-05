@@ -10,15 +10,26 @@ const FitBounds = ({ geojson }) => {
   const map = useMap();
   useEffect(() => {
     if (!geojson?.features?.length) return;
-    const layer = L.geoJSON(geojson);
-    const b = layer.getBounds();
+    const b = L.geoJSON(geojson).getBounds();
     if (b.isValid()) map.fitBounds(b, { padding: [24, 24] });
     setTimeout(() => map.invalidateSize(), 50);
   }, [geojson, map]);
   return null;
 };
 
-export const CaseMap = ({ geojson, selected, onSelect, showTracks = true, showCorridor = true }) => {
+// Position of a track at time t (ms): interpolated between fixes; null if before first fix.
+export const trackPositionAt = (feature, t) => {
+  const ts = feature.properties.timestamps.map((x) => new Date(x).getTime());
+  const coords = feature.geometry.coordinates;
+  if (t < ts[0]) return null;
+  if (t >= ts[ts.length - 1]) return { lat: coords[ts.length - 1][1], lon: coords[ts.length - 1][0], idx: ts.length - 1, stale: t - ts[ts.length - 1] > 2 * 3600e3 };
+  let i = 0;
+  while (i < ts.length - 1 && ts[i + 1] <= t) i++;
+  const f = (t - ts[i]) / Math.max(ts[i + 1] - ts[i], 1);
+  return { lat: coords[i][1] + (coords[i + 1][1] - coords[i][1]) * f, lon: coords[i][0] + (coords[i + 1][0] - coords[i][0]) * f, idx: i, gap: ts[i + 1] - ts[i] > 2 * 3600e3 };
+};
+
+export const CaseMap = ({ geojson, selected, onSelect, showTracks = true, showCorridor = true, timeCursor = null, acquisitionTime = null }) => {
   const layers = useMemo(() => {
     const f = geojson?.features || [];
     return {
@@ -29,6 +40,8 @@ export const CaseMap = ({ geojson, selected, onSelect, showTracks = true, showCo
       bp: f.filter((x) => x.properties.layer === "backprojected_centroid"),
     };
   }, [geojson]);
+  const acqMs = acquisitionTime ? new Date(acquisitionTime).getTime() : null;
+  const spillVisible = timeCursor == null || acqMs == null || timeCursor >= acqMs;
 
   return (
     <div className="h-full w-full" data-testid="case-map">
@@ -39,20 +52,40 @@ export const CaseMap = ({ geojson, selected, onSelect, showTracks = true, showCo
         <GeoJSON key={`c${i}`} data={f} style={{ color: "#00F0FF", weight: 1, dashArray: "6,6", fillColor: "#00F0FF", fillOpacity: 0.05 }} />
       ))}
       {layers.spill.map((f, i) => (
-        <GeoJSON key={`s${i}-${f.properties.id}`} data={f} style={{ color: "#FF2A6D", weight: 2, dashArray: "4,4", fillColor: "#FF2A6D", fillOpacity: 0.35 }}>
+        <GeoJSON key={`s${i}-${f.properties.id}-${spillVisible}`} data={f} style={{ color: "#FF2A6D", weight: 2, dashArray: "4,4", fillColor: "#FF2A6D", fillOpacity: spillVisible ? 0.35 : 0.06, opacity: spillVisible ? 1 : 0.35 }}>
           <Popup><b>Spill observation</b><br />Acquired {fmtTime(f.properties.acquisition_time)}<br />Confidence {Math.round(f.properties.detection_confidence * 100)}% · {f.properties.estimated_area_km2} km²<br />{f.properties.quality_flags?.join(", ") || "no quality flags"}</Popup>
         </GeoJSON>
       ))}
       {showTracks && layers.tracks.map((f) => {
         const p = f.properties;
         const dim = selected && selected !== p.mmsi;
+        let coords = f.geometry.coordinates;
+        let head = null;
+        if (timeCursor != null) {
+          head = trackPositionAt(f, timeCursor);
+          if (!head) return null;
+          coords = [...coords.slice(0, head.idx + 1), [head.lon, head.lat]];
+        }
         return (
-          <Polyline key={`t${p.mmsi}`} positions={f.geometry.coordinates.map(([lon, lat]) => [lat, lon])}
+          <Polyline key={`t${p.mmsi}`} positions={coords.map(([lon, lat]) => [lat, lon])}
             pathOptions={{ color: colorFor(p.rank), weight: dim ? 1.5 : 3, opacity: dim ? 0.3 : 0.85 }}
             eventHandlers={{ click: () => onSelect?.(p.mmsi) }} />
         );
       })}
-      {layers.fixes.map((f) => {
+      {showTracks && timeCursor != null && layers.tracks.map((f) => {
+        const p = f.properties;
+        const head = trackPositionAt(f, timeCursor);
+        if (!head) return null;
+        const dim = selected && selected !== p.mmsi;
+        return (
+          <CircleMarker key={`h${p.mmsi}`} center={[head.lat, head.lon]} radius={p.rank === 1 ? 9 : 7}
+            pathOptions={{ color: "#F8FAFC", fillColor: colorFor(p.rank), fillOpacity: dim ? 0.3 : 1, weight: 2, dashArray: head.gap || head.stale ? "3,3" : null, opacity: dim ? 0.3 : 1 }}
+            eventHandlers={{ click: () => onSelect?.(p.mmsi) }}>
+            <Popup><b>#{p.rank} {p.vessel_name || p.mmsi}</b><br />{fmtTime(new Date(timeCursor).toISOString())}{head.gap || head.stale ? <><br /><i>inside AIS gap — position interpolated</i></> : null}</Popup>
+          </CircleMarker>
+        );
+      })}
+      {timeCursor == null && layers.fixes.map((f) => {
         const p = f.properties;
         const [lon, lat] = f.geometry.coordinates;
         return (
@@ -67,7 +100,7 @@ export const CaseMap = ({ geojson, selected, onSelect, showTracks = true, showCo
           </CircleMarker>
         );
       })}
-      {layers.bp.map((f) => {
+      {timeCursor == null && layers.bp.map((f) => {
         const [lon, lat] = f.geometry.coordinates;
         return (
           <CircleMarker key={`b${f.properties.mmsi}`} center={[lat, lon]} radius={4}

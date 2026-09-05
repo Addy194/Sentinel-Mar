@@ -2,13 +2,14 @@ import logging
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, APIRouter
+from fastapi import FastAPI, APIRouter, Depends
 from starlette.middleware.cors import CORSMiddleware
 
 from db import db, client, ensure_indexes
 import jobs
 import services  # noqa: F401  (registers job handlers)
-from routers import ingest, cases, system
+from routers import ingest, cases, system, auth as auth_router
+from auth import seed_users, require_role
 from seed import seed_demo
 from correlation import ALGORITHM_VERSION
 
@@ -19,6 +20,7 @@ logger = logging.getLogger("sentinelmar")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await ensure_indexes()
+    await seed_users()
     jobs.start()
     try:
         res = await seed_demo()
@@ -39,10 +41,11 @@ async def root():
 
 
 @api.post("/seed")
-async def reseed():
+async def reseed(user=Depends(require_role("admin"))):
     return await seed_demo()
 
 
+api.include_router(auth_router.router)
 api.include_router(ingest.router)
 api.include_router(cases.router)
 api.include_router(system.router)

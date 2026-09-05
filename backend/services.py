@@ -10,6 +10,7 @@ from geo import validate_polygon, area_km2, max_extent_km, rotated_rect_polygon
 from models import new_id, AISPositionIn, SpillObservationCreate, SceneCreate, CorrelationParams
 from correlation import run_correlation, ALGORITHM_VERSION
 from jobs import handler, job_log
+from weather import fetch_environment
 
 MOCK_DETECTOR_VERSION = "mock-sar-detector-0.1.0"
 
@@ -136,6 +137,22 @@ async def mock_detect(scene, actor="system"):
     return spill, case
 
 
+async def apply_live_environment(spill, actor="system"):
+    """Fetch Open-Meteo wind/current at the spill centroid & acquisition hour and persist on the observation."""
+    lon, lat = spill["centroid"]["coordinates"]
+    env = await fetch_environment(lat, lon, to_utc(spill["acquisition_time"]))
+    update = {"environment": env, "updated_at": datetime.now(timezone.utc)}
+    if env["wind"]:
+        update["wind"] = {"speed_ms": env["wind"]["speed_ms"], "direction_deg": env["wind"]["direction_deg"]}
+    if env["current"]:
+        update["current"] = {"speed_ms": env["current"]["speed_ms"], "direction_deg": env["current"]["direction_deg"]}
+    await db.spill_observations.update_one({"id": spill["id"]}, {"$set": update})
+    spill.update(update)
+    await audit("spill_observation", spill["id"], "spill.environment_fetched",
+                {"source": env["source"], "wind": env["wind"], "current": env["current"], "errors": env["errors"]}, actor)
+    return env
+
+
 @handler("correlate")
 async def handle_correlate(job):
     case_id = job["payload"]["case_id"]
@@ -146,8 +163,11 @@ async def handle_correlate(job):
     spill = await db.spill_observations.find_one({"id": case["spill_observation_id"]}, {"_id": 0})
     spill["acquisition_time"] = to_utc(spill["acquisition_time"])
     t0 = spill["acquisition_time"]
-    radius_km = params.corridor_km + spill.get("extent_km", 0)
     lon, lat = spill["centroid"]["coordinates"]
+    if job["payload"].get("fetch_environment"):
+        env = await apply_live_environment(spill, job.get("actor", "system"))
+        await job_log(job["id"], f"live environment ({env['source']}): wind {env['wind']} · current {env['current']}" + (f" · errors {env['errors']}" if env["errors"] else ""), "warn" if env["errors"] else "info")
+    radius_km = params.corridor_km + spill.get("extent_km", 0)
     await job_log(job["id"], f"querying AIS within {radius_km:.1f} km of ({lat:.4f},{lon:.4f}), {t0 - timedelta(hours=params.window_hours_before):%Y-%m-%d %H:%M} → {t0 + timedelta(hours=params.window_hours_after):%H:%M}Z")
     q = {"timestamp": {"$gte": t0 - timedelta(hours=params.window_hours_before), "$lte": t0 + timedelta(hours=params.window_hours_after)},
          "location": {"$geoWithin": {"$centerSphere": [[lon, lat], radius_km / 6371.0088]}}}

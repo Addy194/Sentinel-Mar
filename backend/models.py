@@ -108,7 +108,7 @@ class CorrelationParams(BaseModel):
 class CorrelateRequest(BaseModel):
     params: Optional[CorrelationParams] = None
     sync: bool = False
-    actor: str = "analyst"
+    fetch_environment: bool = False
 
 
 class ReviewCreate(BaseModel):
@@ -116,8 +116,33 @@ class ReviewCreate(BaseModel):
     vessel_mmsi: Optional[str] = None
     reason_codes: List[str] = []
     notes: str = ""
-    analyst: str = "analyst"
     result_version: Optional[int] = None
+
+
+class OverrideRequest(BaseModel):
+    attribution_status: Literal["indeterminate", "insufficient_evidence", "possible", "probable", "analyst_confirmed"]
+    vessel_mmsi: Optional[str] = None
+    notes: str = Field(min_length=3)
+    close_case: bool = True
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class UserCreate(BaseModel):
+    email: str
+    name: str
+    role: str
+    password: str = Field(min_length=8)
+
+
+class UserUpdate(BaseModel):
+    role: Optional[str] = None
+    active: Optional[bool] = None
+    name: Optional[str] = None
+    password: Optional[str] = Field(default=None, min_length=8)
 
 
 class CaseUpdate(BaseModel):

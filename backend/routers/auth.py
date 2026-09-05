@@ -1,0 +1,98 @@
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
+
+from auth import (check_lockout, clear_failures, create_access_token, get_current_user, hash_password, public_user,
+                  record_failure, require_role, verify_password, ROLES, ACCESS_HOURS)
+from db import db, clean, audit
+from models import LoginRequest, UserCreate, UserUpdate, new_id
+
+router = APIRouter()
+
+
+@router.post("/auth/login")
+async def login(body: LoginRequest, request: Request, response: Response):
+    email = body.email.lower().strip()
+    ip = (request.headers.get("x-forwarded-for") or (request.client.host if request.client else "unknown")).split(",")[0].strip()
+    ident = f"{ip}:{email}"
+    await check_lockout(ident)
+    user = await db.users.find_one({"email": email})
+    if not user or not verify_password(body.password, user["password_hash"]):
+        await record_failure(ident)
+        raise HTTPException(401, "Invalid email or password")
+    if not user.get("active", True):
+        raise HTTPException(403, "Account deactivated")
+    await clear_failures(ident)
+    token = create_access_token(user)
+    response.set_cookie("access_token", token, httponly=True, secure=True, samesite="none", max_age=ACCESS_HOURS * 3600, path="/")
+    await db.users.update_one({"id": user["id"]}, {"$set": {"last_login": datetime.now(timezone.utc)}})
+    await audit("user", user["id"], "auth.login", {"email": email}, email)
+    return {"access_token": token, "token_type": "bearer", "user": clean(public_user(user))}
+
+
+@router.post("/auth/logout")
+async def logout(response: Response, user=Depends(get_current_user)):
+    response.delete_cookie("access_token", path="/")
+    await audit("user", user["id"], "auth.logout", {}, user["email"])
+    return {"ok": True}
+
+
+@router.get("/auth/me")
+async def me(user=Depends(get_current_user)):
+    return clean(user)
+
+
+@router.get("/users")
+async def list_users(user=Depends(require_role("admin"))):
+    return clean([public_user(u) async for u in db.users.find({}).sort("created_at", 1)])
+
+
+@router.post("/users", status_code=201)
+async def create_user(body: UserCreate, user=Depends(require_role("admin"))):
+    if body.role not in ROLES:
+        raise HTTPException(400, f"role must be one of {ROLES}")
+    email = body.email.lower().strip()
+    if await db.users.find_one({"email": email}):
+        raise HTTPException(400, "email already registered")
+    doc = {"id": new_id(), "email": email, "name": body.name, "role": body.role, "password_hash": hash_password(body.password),
+           "active": True, "created_at": datetime.now(timezone.utc), "created_by": user["email"]}
+    await db.users.insert_one(dict(doc))
+    await audit("user", doc["id"], "user.created", {"email": email, "role": body.role}, user["email"])
+    return clean(public_user(doc))
+
+
+@router.patch("/users/{user_id}")
+async def update_user(user_id: str, body: UserUpdate, user=Depends(require_role("admin"))):
+    target = await db.users.find_one({"id": user_id})
+    if not target:
+        raise HTTPException(404, "user not found")
+    update = {}
+    if body.role is not None:
+        if body.role not in ROLES:
+            raise HTTPException(400, f"role must be one of {ROLES}")
+        if user_id == user["id"] and body.role != "admin":
+            raise HTTPException(400, "cannot demote yourself")
+        update["role"] = body.role
+    if body.active is not None:
+        if user_id == user["id"] and not body.active:
+            raise HTTPException(400, "cannot deactivate yourself")
+        update["active"] = body.active
+    if body.name is not None:
+        update["name"] = body.name
+    if body.password:
+        update["password_hash"] = hash_password(body.password)
+    if update:
+        await db.users.update_one({"id": user_id}, {"$set": update})
+        await audit("user", user_id, "user.updated", {k: v for k, v in update.items() if k != "password_hash"}, user["email"])
+    return clean(public_user(await db.users.find_one({"id": user_id})))
+
+
+@router.delete("/users/{user_id}")
+async def delete_user(user_id: str, user=Depends(require_role("admin"))):
+    if user_id == user["id"]:
+        raise HTTPException(400, "cannot delete yourself")
+    res = await db.users.delete_one({"id": user_id})
+    if not res.deleted_count:
+        raise HTTPException(404, "user not found")
+    await audit("user", user_id, "user.deleted", {}, user["email"])
+    return {"ok": True}

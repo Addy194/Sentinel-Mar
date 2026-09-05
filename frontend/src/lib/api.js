@@ -1,9 +1,37 @@
 import axios from "axios";
 
 export const api = axios.create({ baseURL: `${process.env.REACT_APP_BACKEND_URL}/api` });
+export const TOKEN_KEY = "sentinelmar_token";
+
+api.interceptors.request.use((cfg) => {
+  const t = localStorage.getItem(TOKEN_KEY);
+  if (t) cfg.headers.Authorization = `Bearer ${t}`;
+  return cfg;
+});
+api.interceptors.response.use(
+  (r) => r,
+  (err) => {
+    if (err.response?.status === 401 && !err.config?.url?.includes("/auth/login")) {
+      localStorage.removeItem(TOKEN_KEY);
+      window.dispatchEvent(new Event("sentinelmar:unauthorized"));
+    }
+    return Promise.reject(err);
+  }
+);
+
+export const apiError = (e) => {
+  const d = e.response?.data?.detail;
+  if (!d) return e.message || "Request failed";
+  if (typeof d === "string") return d;
+  if (Array.isArray(d)) return d.map((x) => x?.msg || JSON.stringify(x)).join(" ");
+  return d.msg || String(d);
+};
 
 export const fmtTime = (iso) => (iso ? new Date(iso).toISOString().replace("T", " ").slice(0, 16) + "Z" : "—");
 export const pct = (x) => `${Math.round((x || 0) * 100)}%`;
+
+export const ROLE_RANK = { analyst: 0, supervisor: 1, admin: 2 };
+export const hasRole = (user, min) => !!user && ROLE_RANK[user.role] >= ROLE_RANK[min];
 
 export const STATUS_LABEL = {
   indeterminate: "Indeterminate",
@@ -22,7 +50,7 @@ export const STATUS_STYLE = {
 };
 
 export const pollJob = async (jobId, onTick) => {
-  for (let i = 0; i < 60; i++) {
+  for (let i = 0; i < 90; i++) {
     const { data } = await api.get(`/jobs/${jobId}`);
     onTick?.(data);
     if (data.status === "succeeded" || data.status === "failed") return data;

@@ -2,10 +2,12 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { ShieldAlert, Check, Waves, Ship, Clock, FileCheck } from "lucide-react";
-import { api, fmtTime, pct } from "@/lib/api";
+import { api, apiError, fmtTime, pct, hasRole } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
 import { StatusBadge, BandBadge } from "@/components/StatusBadge";
 
 export default function Dashboard() {
+  const { user } = useAuth();
   const [cases, setCases] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [stats, setStats] = useState(null);
@@ -19,9 +21,8 @@ export default function Dashboard() {
   useEffect(() => { load().catch((e) => toast.error(e.message)); }, []);
 
   const ack = async (id) => {
-    await api.post(`/alerts/${id}/ack`);
-    toast.success("Alert acknowledged");
-    load();
+    try { await api.post(`/alerts/${id}/ack`); toast.success("Alert acknowledged"); load(); }
+    catch (e) { toast.error(apiError(e)); }
   };
 
   const shown = filter === "all" ? cases : cases.filter((c) => c.attribution_status === filter);
@@ -105,11 +106,12 @@ export default function Dashboard() {
                 <span className="font-mono text-[10px] text-slate-500">{fmtTime(a.created_at)}</span>
               </div>
               <p className="mt-1.5 text-slate-300 leading-relaxed">{a.message}</p>
-              {!a.acknowledged && (
+              {!a.acknowledged && hasRole(user, "supervisor") && (
                 <button onClick={() => ack(a.id)} data-testid={`alert-ack-${a.id}`} className="mt-2 inline-flex items-center gap-1 rounded px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-emerald-300 hover:bg-emerald-400/10">
                   <Check size={12} /> Acknowledge
                 </button>
               )}
+              {!a.acknowledged && !hasRole(user, "supervisor") && <p className="mt-2 font-mono text-[10px] text-slate-500" data-testid={`alert-ack-locked-${a.id}`}>supervisor acknowledgement required</p>}
             </div>
           ))}
         </div>

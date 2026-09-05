@@ -2,18 +2,20 @@ import { Fragment, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Check, RefreshCw } from "lucide-react";
-import { api, fmtTime } from "@/lib/api";
+import { api, apiError, fmtTime, hasRole } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
 
 const STATUS_COLOR = { queued: "#94A3B8", running: "#00F0FF", succeeded: "#10B981", failed: "#FF2A6D" };
 
 export default function Jobs() {
+  const { user } = useAuth();
   const [jobs, setJobs] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [open, setOpen] = useState(null);
   const nav = useNavigate();
   const load = () => Promise.all([api.get("/jobs"), api.get("/alerts")]).then(([j, a]) => { setJobs(j.data); setAlerts(a.data); }).catch((e) => toast.error(e.message));
   useEffect(() => { load(); const t = setInterval(load, 5000); return () => clearInterval(t); }, []);
-  const ack = async (id) => { await api.post(`/alerts/${id}/ack`); toast.success("Alert acknowledged"); load(); };
+  const ack = async (id) => { try { await api.post(`/alerts/${id}/ack`); toast.success("Alert acknowledged"); load(); } catch (e) { toast.error(apiError(e)); } };
 
   return (
     <div className="h-full overflow-y-auto p-6">
@@ -62,8 +64,9 @@ export default function Jobs() {
               <div key={a.id} className="rounded border p-3 text-xs" style={{ borderColor: a.acknowledged ? "var(--border-default)" : "rgba(255,42,109,0.5)" }} data-testid={`jobs-alert-${a.id}`}>
                 <div className="flex justify-between"><button className="font-mono text-cyan-300 hover:underline" onClick={() => nav(`/cases/${a.case_id}`)}>{a.case_number}</button><span className="font-mono text-[10px] text-slate-500">{fmtTime(a.created_at)}</span></div>
                 <p className="mt-1 text-slate-300">{a.message}</p>
-                {a.acknowledged ? <p className="mt-1 font-mono text-[10px] text-emerald-300">ack by {a.acknowledged_by}</p> :
-                  <button onClick={() => ack(a.id)} data-testid={`jobs-alert-ack-${a.id}`} className="mt-2 inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-emerald-300 hover:underline"><Check size={12} /> Acknowledge</button>}
+                {a.acknowledged ? <p className="mt-1 font-mono text-[10px] text-emerald-300">ack by {a.acknowledged_by}</p> : hasRole(user, "supervisor") ?
+                  <button onClick={() => ack(a.id)} data-testid={`jobs-alert-ack-${a.id}`} className="mt-2 inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-emerald-300 hover:underline"><Check size={12} /> Acknowledge</button>
+                  : <p className="mt-1 font-mono text-[10px] text-slate-500">supervisor acknowledgement required</p>}
               </div>
             ))}
           </div>
