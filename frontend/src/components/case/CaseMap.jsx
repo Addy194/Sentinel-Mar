@@ -2,6 +2,7 @@ import { useEffect, useMemo } from "react";
 import { MapContainer, TileLayer, GeoJSON, CircleMarker, Polyline, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
 import { fmtTime } from "@/lib/api";
+import { GibsLayer } from "@/components/map/GibsLayer";
 
 const RANK_COLORS = ["#FF2A6D", "#FFB703", "#00F0FF", "#9D4EDD", "#38BDF8", "#10B981"];
 const rankColorFor = (rank) => RANK_COLORS[Math.min((rank || 1) - 1, RANK_COLORS.length - 1)];
@@ -29,7 +30,7 @@ export const trackPositionAt = (feature, t) => {
   return { lat: coords[i][1] + (coords[i + 1][1] - coords[i][1]) * f, lon: coords[i][0] + (coords[i + 1][0] - coords[i][0]) * f, idx: i, gap: ts[i + 1] - ts[i] > 2 * 3600e3 };
 };
 
-export const CaseMap = ({ geojson, selected, onSelect, showTracks = true, showCorridor = true, timeCursor = null, acquisitionTime = null, zones = null, sideColors = null }) => {
+export const CaseMap = ({ geojson, selected, onSelect, showTracks = true, showCorridor = true, timeCursor = null, acquisitionTime = null, zones = null, sideColors = null, gibs = null }) => {
   const colorFor = (rank, side) => (sideColors && side ? sideColors[side] : RANK_COLORS[Math.min((rank || 1) - 1, RANK_COLORS.length - 1)]);
   const layers = useMemo(() => {
     const f = geojson?.features || [];
@@ -48,6 +49,7 @@ export const CaseMap = ({ geojson, selected, onSelect, showTracks = true, showCo
     <div className="h-full w-full" data-testid="case-map">
     <MapContainer center={[53.5, 3.8]} zoom={9} className="h-full w-full" zoomControl>
       <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; OpenStreetMap contributors' className="dark-tiles" />
+      {gibs && acquisitionTime && <GibsLayer layer={gibs.layer} date={acquisitionTime.slice(0, 10)} template={gibs.template} />}
       <FitBounds geojson={geojson} />
       {zones?.features?.length > 0 && (
         <GeoJSON key={`zones-${zones.features.length}`} data={zones}

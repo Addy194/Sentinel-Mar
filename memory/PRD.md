@@ -46,8 +46,15 @@ POST/GET scenes, POST scenes/{id}/detect (mock), POST/GET spill-observations, PO
 - **Zone alert rules**: `rules.py` + `routers/rules.py` — supervisor CRUD `/zone-rules` (zone_code, optional min_area_km2 / min_confidence, severity, primary_only, note), evaluated on case open, after correlation, and `POST /zone-rules/evaluate`; dedup per case+rule; `ZoneRules.jsx` panel on Zones page.
 - Tested: iteration_5 — 29/29 backend, all frontend flows pass, no issues.
 
+## Implemented (iteration 6)
+- **Global satellite imagery**: `satellite.py` — Microsoft Planetary Computer STAC (open, no key): `GET /satellite/collections`, `POST /satellite/search` (bbox/date/collection, Sentinel-1 GRD + Sentinel-2 L2A w/ cloud filter), `GET /satellite/preview` (proxied quicklook, retry + cache + thumbnail fallback), `POST /satellite/register` (→ SentinelMar scene with STAC href/metadata; optional mock detect). NASA GIBS daily true-colour basemap (`GibsLayer.jsx`) on Scene Explorer and case map ("Satellite" toggle, acquisition date).
+- **Scene Explorer** `/explorer`: world map with region presets, search current view, footprints + SAR/optical previews, register / register+mock-detect.
+- **Live global AIS**: `ais_live.py` aisstream.io websocket collector (bboxes, PositionReport → existing dedup pipeline), `GET /ais/live/status`, admin `PUT /ais/live/settings`; `LiveAis` panel on Ingestion. **Key NOT provided → not configured.**
+- Mock detector kept as labelled placeholder.
+- Tested: iteration_6 — 19/19 backend, all frontend flows pass; preview retry/cache added after review.
+
 ## Backlog (prioritized)
-- P1: Admin enters Resend API key + verified sender in Email Settings and sends a test email (delivery unverified — alerts + resets then go live); retention policies; rate limiting; encrypt Resend key at rest; GeoTIFF preview/rendering for attachments.
+- P1: Admin enters Resend API key (alerts + resets) and aisstream.io key (live AIS) — both flows built, delivery/streaming unverified; real SAR dark-spot detector on Sentinel-1 quicklooks; retention policies; rate limiting.
 - P2: Additional met/ocean providers, replay testing harness, observability/metrics, SAR segmentation model once labeled data exists, separate worker process (Celery/Redis).
 
 ## Known limitations

@@ -5,6 +5,7 @@ import { Satellite, Waves, Radio, Scan } from "lucide-react";
 import { api, fmtTime, pollJob } from "@/lib/api";
 
 import { CsvUpload } from "@/components/ingest/CsvUpload";
+import { LiveAis } from "@/components/ingest/LiveAis";
 
 const inputCls = "w-full rounded border bg-slate-900/60 px-2.5 py-1.5 font-mono text-xs text-slate-100 outline-none focus:border-cyan-400/60";
 const bd = { borderColor: "var(--border-highlight)" };
@@ -40,6 +41,7 @@ export default function Ingest() {
         <p className="label-mono mb-1">Provider-neutral ingestion contracts</p>
         <h1 className="font-display text-3xl font-extrabold tracking-tight sm:text-4xl">Ingestion</h1>
       </div>
+      <div className="mb-4"><LiveAis onChanged={load} /></div>
       <div className="grid gap-4 xl:grid-cols-3">
         <SceneForm onDone={load} />
         <SpillForm scenes={scenes} onDone={(caseId) => { load(); if (caseId) nav(`/cases/${caseId}`); }} />

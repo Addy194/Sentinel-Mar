@@ -14,6 +14,7 @@ import Zones from "@/pages/Zones";
 import VesselProfile from "@/pages/VesselProfile";
 import Watchlist from "@/pages/Watchlist";
 import Compare from "@/pages/Compare";
+import SceneExplorer from "@/pages/SceneExplorer";
 import { ForgotPassword, ResetPassword } from "@/pages/PasswordReset";
 
 const Protected = ({ children, role }) => {
@@ -41,6 +42,7 @@ function App() {
               <Route path="/zones" element={<Zones />} />
               <Route path="/watchlist" element={<Watchlist />} />
               <Route path="/compare" element={<Compare />} />
+              <Route path="/explorer" element={<SceneExplorer />} />
               <Route path="/ingest" element={<Ingest />} />
               <Route path="/jobs" element={<Jobs />} />
               <Route path="/users" element={<Protected role="admin"><Users /></Protected>} />

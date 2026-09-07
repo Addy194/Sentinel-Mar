@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { toast } from "sonner";
-import { ArrowLeft, Download, Layers, FileText, Columns2 } from "lucide-react";
+import { ArrowLeft, Download, Layers, FileText, Columns2, Globe2 } from "lucide-react";
 import { api, apiError, fmtTime, pct } from "@/lib/api";
 import { StatusBadge, BandBadge } from "@/components/StatusBadge";
 import { CaseMap } from "@/components/case/CaseMap";
@@ -30,12 +30,15 @@ export default function CaseDetail() {
   const [pdfBusy, setPdfBusy] = useState(false);
   const [zones, setZones] = useState(null);
   const [showZones, setShowZones] = useState(true);
+  const [satMeta, setSatMeta] = useState(null);
+  const [showSat, setShowSat] = useState(false);
 
   const load = useCallback(async () => {
     const [a, b, g, e, cfg, z] = await Promise.all([api.get(`/cases/${id}`), api.get(`/cases/${id}/candidates`), api.get(`/cases/${id}/geojson`), api.get(`/cases/${id}/evidence`), api.get("/config/defaults"), api.get("/jurisdictions/geojson")]);
     setC(a.data); setCands(b.data); setGeo(g.data); setEvidence(e.data); setConfig(cfg.data); setZones(z.data);
   }, [id]);
   useEffect(() => { load().catch((e) => toast.error(apiError(e))); }, [load]);
+  useEffect(() => { api.get("/satellite/collections").then((r) => setSatMeta(r.data)).catch(() => {}); }, []);
 
   const saveBlob = (blob, name) => { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; a.click(); URL.revokeObjectURL(a.href); };
   const exportGeo = () => saveBlob(new Blob([JSON.stringify(geo, null, 2)], { type: "application/geo+json" }), `${c.case_number}.geojson`);
@@ -54,11 +57,12 @@ export default function CaseDetail() {
   return (
     <div className="flex h-full overflow-hidden" data-testid="case-detail">
       <div className="relative flex-1">
-        <CaseMap geojson={geo} selected={selected} onSelect={setSelected} showTracks={showTracks} timeCursor={cursor} acquisitionTime={c.acquisition_time} zones={showZones ? zones : null} />
+        <CaseMap geojson={geo} selected={selected} onSelect={setSelected} showTracks={showTracks} timeCursor={cursor} acquisitionTime={c.acquisition_time} zones={showZones ? zones : null} gibs={showSat && satMeta ? { layer: satMeta.basemaps[0], template: satMeta.gibs_template } : null} />
         <div className="absolute left-3 top-3 z-[1000] flex items-center gap-2">
           <Link to="/" data-testid="back-to-dashboard" className="inline-flex items-center gap-1 rounded px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-wider text-slate-200" style={overlayBtn}><ArrowLeft size={12} /> Cases</Link>
           <button data-testid="map-toggle-ais-layer" onClick={() => setShowTracks(!showTracks)} className="inline-flex items-center gap-1 rounded px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-wider" style={{ ...overlayBtn, color: showTracks ? "#00F0FF" : "#94A3B8" }}><Layers size={12} /> AIS tracks</button>
           <button data-testid="map-toggle-zones-layer" onClick={() => setShowZones(!showZones)} className="inline-flex items-center gap-1 rounded px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-wider" style={{ ...overlayBtn, color: showZones ? "#00F0FF" : "#94A3B8" }}><Layers size={12} /> Zones</button>
+          <button data-testid="map-toggle-satellite-layer" onClick={() => setShowSat(!showSat)} title="NASA GIBS VIIRS true colour on acquisition date" className="inline-flex items-center gap-1 rounded px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-wider" style={{ ...overlayBtn, color: showSat ? "#00F0FF" : "#94A3B8" }}><Globe2 size={12} /> Satellite</button>
           <button data-testid="btn-export-geojson" onClick={exportGeo} className="inline-flex items-center gap-1 rounded px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-wider text-slate-200" style={overlayBtn}><Download size={12} /> GeoJSON</button>
           <button data-testid="btn-export-pdf" disabled={pdfBusy} onClick={exportPdf} className="inline-flex items-center gap-1 rounded px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-wider disabled:opacity-50" style={{ ...overlayBtn, color: "#FFB703" }}><FileText size={12} /> {pdfBusy ? "Building…" : "Evidence PDF"}</button>
           <Link to={`/compare?a=${id}`} data-testid="btn-compare-case" className="inline-flex items-center gap-1 rounded px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-wider text-slate-200" style={overlayBtn}><Columns2 size={12} /> Compare</Link>
