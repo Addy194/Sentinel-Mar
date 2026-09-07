@@ -133,6 +133,15 @@ def build_pdf(bundle: dict) -> bytes:
             ["Wind used", f"{env['wind']['speed_ms']} m/s @ {env['wind']['direction_deg']}°" if env.get("wind") else "none", "Current used", f"{env['current']['speed_ms']} m/s @ {env['current']['direction_deg']}°" if env.get("current") else "none"],
             ["Degraded", str(calc["degraded"]), "Spill axis bearing", f"{calc['spill_axis_bearing']}°"],
         ], [W * 0.2, W * 0.3, W * 0.18, W * 0.32], header=False))
+        dm = calc.get("drift_model")
+        gf = calc.get("gap_fill") or {}
+        if dm:
+            el.append(Spacer(1, 4))
+            el.append(Paragraph(f"Backward drift model {dm['version']}: {dm['hours']:.0f} h Lagrangian back-track at {dm['drift_speed_ms']} m/s (3% wind + current), hourly steps; "
+                                f"origin envelope = {dm['k_sigma']}σ region growing to {dm['sigma_km'][-1] * dm['k_sigma']:.1f} km (diffusivity {dm['diffusivity_m2s']} m²/s, velocity uncertainty {dm['velocity_uncertainty_frac'] * 100:.0f}%); "
+                                f"most-likely origin window {dm['likely_window_hours'][0]}–{dm['likely_window_hours'][1]} h before acquisition. Drift factor = exp(−z²/2) with z = distance/σ at the fix time.", small))
+        if gf.get("enabled"):
+            el.append(Paragraph(f"AIS gap filling {gf['version']}: gaps > {gf['threshold_min']} min dead-reckoned from last SOG/COG (blended to the next real fix); synthetic points are dashed on the map, excluded from continuity, and penalise spatial score proportionally to gap length; kinematically impossible transits are flagged spoof_suspect and NOT interpolated.", small))
         el.append(Spacer(1, 6))
         el.append(Paragraph("Ranked candidates", ParagraphStyle("h3", parent=body, fontSize=10, spaceAfter=3, fontName="Helvetica-Bold")))
         rows = [["#", "Vessel", "MMSI / IMO", "Type", "Score", "Status", "Dist km", "Gap h", "Fixes"]]
@@ -151,6 +160,9 @@ def build_pdf(bundle: dict) -> bytes:
                 el.append(Paragraph("Notes: " + " · ".join(c["notes"]), small))
             if c.get("ais_flags"):
                 el.append(Paragraph("AIS flags: " + ", ".join(c["ais_flags"]), small))
+            segs = [s for s in c["evidence"].get("gap_segments") or [] if s["interpolated_points"] or s["spoof_suspect"]]
+            if segs:
+                el.append(Paragraph("AIS gaps: " + " · ".join(f"{s['gap_hours']}h ({s['distance_km']} km, needs {s['required_speed_kn']} kn vs max {s['vessel_max_kn']}) → " + ("SPOOF SUSPECT" if s["spoof_suspect"] else f"{s['interpolated_points']} interpolated pts") for s in segs), small))
         el.append(Spacer(1, 6))
         el.append(Paragraph("Processing log", ParagraphStyle("h3b", parent=body, fontName="Helvetica-Bold")))
         for l in calc.get("processing_log", []):
@@ -170,6 +182,12 @@ def build_pdf(bundle: dict) -> bytes:
         el.append(table(rrows, [W * 0.14, W * 0.18, W * 0.1, W * 0.1, W * 0.2, W * 0.28]))
     else:
         el.append(Paragraph("No analyst decisions recorded.", body))
+    if bundle.get("detector_feedback"):
+        el.append(Paragraph("Detector feedback (human-in-the-loop validation, immutable)", ParagraphStyle("h3c", parent=body, fontName="Helvetica-Bold", spaceBefore=6)))
+        drows = [["When", "Analyst", "Verdict", "FP reason", "Detector version", "Notes"]]
+        for f in bundle["detector_feedback"]:
+            drows.append([_fmt(f["created_at"]), f"{f['user_email']} ({f['user_role']})", f["verdict"], f.get("reason") or "—", f["detector_version"], f.get("notes") or ""])
+        el.append(table(drows, [W * 0.14, W * 0.2, W * 0.12, W * 0.12, W * 0.18, W * 0.24]))
 
     el.append(Paragraph("7. Audit history", h2))
     arows = [["When", "Actor", "Action", "Entity", "Payload"]]

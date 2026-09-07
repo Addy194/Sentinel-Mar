@@ -153,12 +153,31 @@ def _geojson(case, spill, result):
         lon, lat = spill["centroid"]["coordinates"]
         features.append({"type": "Feature", "geometry": circle_polygon(lat, lon, result["params"]["corridor_km"] + spill.get("extent_km", 0)),
                          "properties": {"layer": "corridor", "radius_km": result["params"]["corridor_km"] + spill.get("extent_km", 0)}})
+        dm = result.get("drift_model")
+        if dm:
+            features.append({"type": "Feature", "geometry": dm["envelope"], "properties": {"layer": "drift_envelope", "hours": dm["hours"], "k_sigma": dm["k_sigma"], "version": dm["version"]}})
+            features.append({"type": "Feature", "geometry": dm["likely_envelope"], "properties": {"layer": "drift_likely", "window_hours": dm["likely_window_hours"]}})
+            features.append({"type": "Feature", "geometry": dm["path"], "properties": {"layer": "drift_path", "hours": dm["path_hours"], "sigma_km": dm["sigma_km"], "speed_ms": dm["drift_speed_ms"]}})
         for c in result["candidates"]:
             props = {"layer": "track", "mmsi": c["mmsi"], "vessel_name": c.get("vessel_name"), "rank": c["rank"], "score": c["score"], "status": c["status"]}
             track = c.get("track", [])
             if len(track) >= 2:
-                features.append({"type": "Feature", "geometry": {"type": "LineString", "coordinates": [[p["lon"], p["lat"]] for p in track]},
-                                 "properties": {**props, "timestamps": [p["timestamp"] for p in track], "sog": [p.get("sog_kn") for p in track], "cog": [p.get("cog_deg") for p in track]}})
+                # split into solid (real) and dashed (interpolated) segments
+                segs, cur, cur_interp = [], [track[0]], bool(track[0].get("interpolated"))
+                for p in track[1:]:
+                    interp = bool(p.get("interpolated"))
+                    if interp != cur_interp:
+                        cur.append(p)
+                        segs.append((cur_interp, cur))
+                        cur, cur_interp = [p], interp
+                    else:
+                        cur.append(p)
+                segs.append((cur_interp, cur))
+                for i, (interp, pts) in enumerate(segs):
+                    if len(pts) < 2:
+                        continue
+                    features.append({"type": "Feature", "geometry": {"type": "LineString", "coordinates": [[p["lon"], p["lat"]] for p in pts]},
+                                     "properties": {**props, "segment": i, "interpolated": interp, "timestamps": [p["timestamp"] for p in pts], "sog": [p.get("sog_kn") for p in pts], "cog": [p.get("cog_deg") for p in pts]}})
             cf = c["evidence"]["closest_fix"]
             features.append({"type": "Feature", "geometry": {"type": "Point", "coordinates": [cf["lon"], cf["lat"]]},
                              "properties": {**props, "layer": "closest_fix", "timestamp": cf["timestamp"], "distance_km": c["evidence"]["distance_km"],
@@ -206,6 +225,7 @@ async def _bundle(case_id, version):
     audit_events = await db.audit_events.find({"entity_id": {"$in": entity_ids}}, {"_id": 0}).sort("created_at", 1).to_list(2000)
     jobs = await db.jobs.find({"payload.case_id": case_id}, {"_id": 0}).sort("created_at", 1).to_list(200)
     attachments = await db.attachments.find({"case_id": case_id, "is_deleted": False}, {"_id": 0}).sort("created_at", 1).to_list(200)
+    feedback = await db.detector_feedback.find({"case_id": case_id}, {"_id": 0}).sort("created_at", 1).to_list(100)
     calculations = None
     if result:
         calculations = {"algorithm_version": result["algorithm_version"], "input_hash": result["input_hash"], "params": result["params"],
@@ -223,6 +243,7 @@ async def _bundle(case_id, version):
         "audit_history": audit_events,
         "jobs": jobs,
         "attachments": attachments,
+        "detector_feedback": feedback,
         "disclaimer": "Decision-support evidence bundle. Correlation output indicates possible/probable association only; responsibility requires analyst confirmation and corroborating evidence.",
     })
 

@@ -4,6 +4,7 @@ import traceback
 from datetime import datetime, timezone
 
 from db import db
+from events import publish
 from models import new_id
 
 logger = logging.getLogger("jobs")
@@ -48,6 +49,7 @@ async def process(job_id):
         result = await fn(job)
         await db.jobs.update_one({"id": job_id}, {"$set": {"status": "succeeded", "result": result, "finished_at": datetime.now(timezone.utc), "updated_at": datetime.now(timezone.utc)}})
         await job_log(job_id, "completed")
+        publish("job", {"job_id": job_id, "type": job["type"], "status": "succeeded", "case_id": (job.get("payload") or {}).get("case_id"), "result": result})
     except Exception as e:
         logger.error("job %s failed: %s\n%s", job_id, e, traceback.format_exc())
         if attempts < MAX_ATTEMPTS:
@@ -57,6 +59,7 @@ async def process(job_id):
         else:
             await db.jobs.update_one({"id": job_id}, {"$set": {"status": "failed", "error": str(e), "finished_at": datetime.now(timezone.utc)}})
             await job_log(job_id, f"failed permanently: {e}", "error")
+            publish("job", {"job_id": job_id, "type": job["type"], "status": "failed", "error": str(e)[:200], "case_id": (job.get("payload") or {}).get("case_id")})
     return await db.jobs.find_one({"id": job_id}, {"_id": 0})
 
 

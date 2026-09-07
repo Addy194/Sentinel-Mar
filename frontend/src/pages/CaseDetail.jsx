@@ -14,6 +14,8 @@ import { TimeScrubber } from "@/components/case/TimeScrubber";
 import { CaseTimeline } from "@/components/case/CaseTimeline";
 import { Attachments } from "@/components/case/Attachments";
 import { BeforeAfter } from "@/components/case/BeforeAfter";
+import { DetectorFeedback } from "@/components/case/DetectorFeedback";
+import { useLive } from "@/context/LiveFeed";
 
 const TABS = [["candidates", "Candidates"], ["review", "Analyst review"], ["timeline", "Timeline"], ["files", "Files"], ["beforeafter", "Before / After"], ["evidence", "Evidence & audit"], ["log", "Processing log"]];
 const overlayBtn = { background: "rgba(10,14,23,0.85)", border: "1px solid var(--border-highlight)", backdropFilter: "blur(12px)" };
@@ -46,6 +48,8 @@ export default function CaseDetail() {
     setC(a.data); setCands(b.data); setGeo(g.data); setEvidence(e.data); setConfig(cfg.data); setZones(z.data);
   }, [id]);
   useEffect(() => { load().catch((e) => toast.error(apiError(e))); }, [load]);
+  const live = useLive();
+  useEffect(() => { if (live?.lastJob?.case_id === id && live.lastJob.status === "succeeded") load().catch(() => {}); }, [live?.lastJob, id, load]);
   useEffect(() => { api.get("/satellite/collections").then((r) => setSatMeta(r.data)).catch(() => {}); }, []);
   useEffect(() => {
     if (!c?.scene_id) return undefined;
@@ -114,6 +118,8 @@ export default function CaseDetail() {
             <div className="flex items-center gap-2"><span className="h-2.5 w-4 border border-dashed" style={{ borderColor: "#FF2A6D", background: "rgba(255,42,109,0.35)" }} /> Spill polygon</div>
             <div className="flex items-center gap-2 mt-1"><span className="h-2.5 w-4 border border-dashed" style={{ borderColor: "#00F0FF" }} /> Search corridor</div>
             <div className="flex items-center gap-2 mt-1"><span className="h-0.5 w-4" style={{ background: "#FF2A6D" }} /> Rank 1 track · <span className="h-0.5 w-4" style={{ background: "#FFB703" }} /> Rank 2 …</div>
+            <div className="flex items-center gap-2 mt-1"><span className="h-0 w-4 border-t-2 border-dashed" style={{ borderColor: "#94A3B8" }} /> Interpolated AIS gap (dead reckoning)</div>
+            <div className="flex items-center gap-2 mt-1"><span className="h-2.5 w-4 border border-dashed" style={{ borderColor: "#C77DFF", background: "rgba(157,78,221,0.25)" }} /> Origin envelope (2σ back-drift) · likely window</div>
             <div className="flex items-center gap-2 mt-1"><span className="h-2 w-2 rounded-full border border-white" /> Drift back-projection</div>
           </div>
           <div className="flex-1 max-w-3xl">
@@ -158,7 +164,7 @@ export default function CaseDetail() {
               <CandidatesTable candidates={cands?.candidates} selected={selected} onSelect={setSelected} />
             </>
           )}
-          {tab === "review" && <ReviewForm caseId={id} candidates={cands?.candidates} reasonCodes={config?.reason_codes} resultVersion={cands?.version} onSaved={load} />}
+          {tab === "review" && <div className="space-y-4"><DetectorFeedback caseId={id} source={c.source} onSaved={load} /><ReviewForm caseId={id} candidates={cands?.candidates} reasonCodes={config?.reason_codes} resultVersion={cands?.version} onSaved={load} /></div>}
           {tab === "timeline" && <CaseTimeline caseId={id} caseNumber={c.case_number} />}
           {tab === "files" && <Attachments caseId={id} onChanged={load} />}
           {tab === "beforeafter" && <div className="h-[520px]"><BeforeAfter caseId={id} /></div>}

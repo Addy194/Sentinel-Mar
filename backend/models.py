@@ -102,6 +102,8 @@ class CorrelationParams(BaseModel):
     wind: Optional[WindInput] = None
     current: Optional[CurrentInput] = None
     use_observation_environment: bool = True
+    fill_gaps: bool = True
+    gap_threshold_min: float = Field(default=30, ge=5, le=720)
     weights: Dict[str, float] = DEFAULT_WEIGHTS
 
 

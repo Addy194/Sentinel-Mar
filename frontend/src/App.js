@@ -16,6 +16,8 @@ import Watchlist from "@/pages/Watchlist";
 import Compare from "@/pages/Compare";
 import SceneExplorer from "@/pages/SceneExplorer";
 import Events from "@/pages/Events";
+import { LiveFeedProvider } from "@/context/LiveFeed";
+import { InactivityGuard } from "@/components/InactivityGuard";
 import { ForgotPassword, ResetPassword } from "@/pages/PasswordReset";
 
 const Protected = ({ children, role }) => {
@@ -32,6 +34,8 @@ function App() {
     <div className="App">
       <AuthProvider>
         <BrowserRouter>
+          <LiveFeedProvider>
+          <InactivityGuard />
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
@@ -50,6 +54,7 @@ function App() {
               <Route path="/users" element={<Protected role="admin"><Users /></Protected>} />
             </Route>
           </Routes>
+          </LiveFeedProvider>
         </BrowserRouter>
       </AuthProvider>
       <Toaster theme="dark" position="bottom-right" toastOptions={{ style: { background: "#162032", border: "1px solid #334155", color: "#F8FAFC" } }} />

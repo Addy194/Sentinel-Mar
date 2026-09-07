@@ -5,6 +5,8 @@ import { ShieldAlert, Check, Waves, Ship, Clock, FileCheck } from "lucide-react"
 import { api, apiError, fmtTime, pct, hasRole } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { StatusBadge, BandBadge } from "@/components/StatusBadge";
+import { DetectorPrecision } from "@/components/dashboard/DetectorPrecision";
+import { useLive } from "@/context/LiveFeed";
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -19,6 +21,13 @@ export default function Dashboard() {
     setCases(c.data); setAlerts(a.data); setStats(s.data);
   };
   useEffect(() => { load().catch((e) => toast.error(e.message)); }, []);
+  const live = useLive();
+  useEffect(() => {
+    const a = live?.alerts?.[0];
+    if (!a) return;
+    setAlerts((prev) => (prev.some((x) => x.id === a.id) ? prev : [a, ...prev]));
+  }, [live?.alerts]);
+  useEffect(() => { if (live?.lastJob?.status === "succeeded") load().catch(() => {}); }, [live?.lastJob]);
 
   const ack = async (id) => {
     try { await api.post(`/alerts/${id}/ack`); toast.success("Alert acknowledged"); load(); }
@@ -98,6 +107,7 @@ export default function Dashboard() {
           <h2 className="font-display font-semibold">Alerts</h2>
           <span className="ml-auto font-mono text-xs text-slate-400" data-testid="alerts-count">{alerts.filter((a) => !a.acknowledged).length} open</span>
         </div>
+        <div className="border-b p-3" style={{ borderColor: "var(--border-default)" }}><DetectorPrecision /></div>
         <div className="flex-1 overflow-y-auto p-3 space-y-2">
           {alerts.length === 0 && <p className="p-3 text-xs text-slate-500" data-testid="alerts-empty">No alerts raised.</p>}
           {alerts.map((a) => (

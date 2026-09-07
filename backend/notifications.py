@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 
 from db import db, audit
 from emailer import get_config, send_email
+from events import publish
 
 logger = logging.getLogger("notifications")
 SEV_COLOR = {"high": "#FF2A6D", "medium": "#FFB703", "low": "#94A3B8"}
@@ -59,4 +60,5 @@ async def notify_alert(alert: dict, case: dict) -> dict:
     await db.alerts.update_one({"id": alert["id"]}, {"$set": {"notification": summary}})
     await db.notifications.insert_one({"id": alert["id"] + ":email", "alert_id": alert["id"], "case_id": case["id"], "subject": subject, **summary})
     await audit("alert", alert["id"], "alert.notified", {k: v for k, v in summary.items() if k != "at"}, "system")
+    publish("alert", {"alert": {k: v for k, v in alert.items() if k != "_id"}, "notification": {"status": summary["status"], "sent": summary["sent"]}})
     return summary

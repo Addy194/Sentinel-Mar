@@ -37,6 +37,8 @@ async def ensure_indexes():
     await db.cases.create_index([("primary_jurisdiction.code", 1), ("acquisition_time", -1)])
     await db.cron_runs.create_index("run_id", unique=True)
     await db.scene_watches.create_index("active")
+    await db.detector_feedback.create_index([("case_id", 1), ("created_at", -1)])
+    await db.detector_feedback.create_index("detector_version")
 
 
 def to_utc(dt):

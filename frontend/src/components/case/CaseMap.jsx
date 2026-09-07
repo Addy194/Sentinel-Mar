@@ -47,6 +47,9 @@ export const CaseMap = ({ geojson, selected, onSelect, showTracks = true, showCo
       tracks: f.filter((x) => x.properties.layer === "track"),
       fixes: f.filter((x) => x.properties.layer === "closest_fix"),
       bp: f.filter((x) => x.properties.layer === "backprojected_centroid"),
+      driftEnv: f.filter((x) => x.properties.layer === "drift_envelope"),
+      driftLikely: f.filter((x) => x.properties.layer === "drift_likely"),
+      driftPath: f.filter((x) => x.properties.layer === "drift_path"),
     };
   }, [geojson]);
   const acqMs = acquisitionTime ? new Date(acquisitionTime).getTime() : null;
@@ -73,6 +76,19 @@ export const CaseMap = ({ geojson, selected, onSelect, showTracks = true, showCo
       {showCorridor && layers.corridor.map((f, i) => (
         <GeoJSON key={`c${i}`} data={f} style={{ color: "#00F0FF", weight: 1, dashArray: "6,6", fillColor: "#00F0FF", fillOpacity: 0.05 }} />
       ))}
+      {showCorridor && layers.driftEnv.map((f, i) => (
+        <GeoJSON key={`de${i}`} data={f} style={{ color: "#C77DFF", weight: 1.5, dashArray: "2,4", fillColor: "#9D4EDD", fillOpacity: 0.12 }}>
+          <Tooltip sticky><span data-testid="drift-envelope-tip">Origin envelope · 2σ · {f.properties.hours}h backward Lagrangian model</span></Tooltip>
+        </GeoJSON>
+      ))}
+      {showCorridor && layers.driftLikely.map((f, i) => (
+        <GeoJSON key={`dl${i}`} data={f} style={{ color: "#C77DFF", weight: 2, fillColor: "#C77DFF", fillOpacity: 0.22 }}>
+          <Tooltip sticky>Most-likely origin window: {f.properties.window_hours[0]}–{f.properties.window_hours[1]} h before acquisition</Tooltip>
+        </GeoJSON>
+      ))}
+      {showCorridor && layers.driftPath.map((f, i) => (
+        <Polyline key={`dp${i}`} positions={f.geometry.coordinates.map(([lon, lat]) => [lat, lon])} pathOptions={{ color: "#C77DFF", weight: 2, dashArray: "1,6", opacity: 0.9 }} />
+      ))}
       {layers.spill.map((f, i) => (
         <GeoJSON key={`s${i}-${f.properties.id}-${spillVisible}`} data={f} style={{ color: sideColors?.[f.properties.side] || "#FF2A6D", weight: 2, dashArray: "4,4", fillColor: sideColors?.[f.properties.side] || "#FF2A6D", fillOpacity: spillVisible ? 0.35 : 0.06, opacity: spillVisible ? 1 : 0.35 }}>
           <Popup><b>Spill observation</b><br />Acquired {fmtTime(f.properties.acquisition_time)}<br />Confidence {Math.round(f.properties.detection_confidence * 100)}% · {f.properties.estimated_area_km2} km²<br />{f.properties.quality_flags?.join(", ") || "no quality flags"}</Popup>
@@ -89,9 +105,11 @@ export const CaseMap = ({ geojson, selected, onSelect, showTracks = true, showCo
           coords = [...coords.slice(0, head.idx + 1), [head.lon, head.lat]];
         }
         return (
-          <Polyline key={`t${p.side || ""}${p.mmsi}`} positions={coords.map(([lon, lat]) => [lat, lon])}
-            pathOptions={{ color: colorFor(p.rank, p.side), weight: dim ? 1.5 : 3, opacity: dim ? 0.3 : 0.85 }}
-            eventHandlers={{ click: () => onSelect?.(p.mmsi) }} />
+          <Polyline key={`t${p.side || ""}${p.mmsi}-${p.segment ?? 0}`} positions={coords.map(([lon, lat]) => [lat, lon])}
+            pathOptions={{ color: colorFor(p.rank, p.side), weight: dim ? 1.5 : p.interpolated ? 2 : 3, opacity: dim ? 0.3 : p.interpolated ? 0.7 : 0.85, dashArray: p.interpolated ? "6,8" : null }}
+            eventHandlers={{ click: () => onSelect?.(p.mmsi) }}>
+            {p.interpolated && <Tooltip sticky><span data-testid="interpolated-tip">Interpolated (dead reckoning across AIS gap) — not a transmitted position</span></Tooltip>}
+          </Polyline>
         );
       })}
       {showTracks && timeCursor != null && layers.tracks.map((f) => {

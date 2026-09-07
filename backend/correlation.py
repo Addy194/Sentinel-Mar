@@ -7,12 +7,15 @@ from shapely.geometry import shape
 
 from geo import haversine_km, distance_to_geom_km, major_axis_bearing, max_extent_km, bearing_deg
 from models import CorrelationParams
+from correlation_env import drift_vector_ms
+from gapfill import fill_gaps, GAP_FILL_VERSION
+from drift import build_drift_model, score_fixes, DRIFT_MODEL_VERSION
 
-ALGORITHM_VERSION = "corr-1.0.0"
+ALGORITHM_VERSION = "corr-1.1.0"
 SEVERE_FLAGS = {"natural_seep_suspect", "low_wind", "sunglint", "conflicting_source", "cloud_contaminated", "lookalike_suspect"}
 RELIABILITY_PENALTIES = {
     "spoof_suspect": 0.4, "position_jump": 0.3, "implausible_speed": 0.2, "naive_timestamp": 0.1,
-    "stale": 0.2, "missing_identity": 0.1, "future_timestamp": 0.3,
+    "stale": 0.2, "missing_identity": 0.1, "future_timestamp": 0.3, "interpolated": 0.0,
 }
 STATUS_ORDER = ["insufficient_evidence", "possible", "probable"]
 
@@ -21,21 +24,21 @@ def clamp(x, lo=0.0, hi=1.0):
     return max(lo, min(hi, x))
 
 
-def drift_vector_ms(wind, current):
-    vx = vy = 0.0
-    if wind:
-        to = math.radians((wind["direction_deg"] + 180) % 360)
-        vx += 0.03 * wind["speed_ms"] * math.sin(to)
-        vy += 0.03 * wind["speed_ms"] * math.cos(to)
-    if current:
-        d = math.radians(current["direction_deg"])
-        vx += current["speed_ms"] * math.sin(d)
-        vy += current["speed_ms"] * math.cos(d)
-    return vx, vy
-
-
 def cap_status(status, cap):
     return STATUS_ORDER[min(STATUS_ORDER.index(status), STATUS_ORDER.index(cap))]
+
+
+_path_cache: dict = {}
+
+
+def drift_model_path(model):
+    """Rebuild the hourly path list from the stored model (cached per model object)."""
+    key = id(model)
+    if key not in _path_cache:
+        coords = model["path"]["coordinates"]
+        _path_cache.clear()
+        _path_cache[key] = [{"h": h, "lat": c[1], "lon": c[0], "sigma_km": s} for h, c, s in zip(model["path_hours"], coords, model["sigma_km"])]
+    return _path_cache[key]
 
 
 def resolve_environment(spill, params: CorrelationParams):
@@ -76,9 +79,12 @@ def run_correlation(spill, positions, params: CorrelationParams):
     L(f"Search corridor {params.corridor_km} km; window -{params.window_hours_before}h / +{params.window_hours_after}h")
     if degraded:
         L("No wind/current inputs available — drift-back uncertainty unresolved; attribution marked DEGRADED", "warn")
+        drift_model = None
     else:
         vx, vy = drift_vector_ms(wind, current)
         L(f"Drift model: 3% wind + surface current → {math.hypot(vx, vy):.2f} m/s toward {(math.degrees(math.atan2(vx, vy)) + 360) % 360:.0f}°")
+        drift_model = build_drift_model(centroid.y, centroid.x, wind, current, params.window_hours_before, spill_age)
+        L(f"Backward Lagrangian model {DRIFT_MODEL_VERSION}: {drift_model['hours']:.0f} h × {drift_model['step_hours']:.0f} h steps, 2σ envelope grows to {drift_model['sigma_km'][-1] * 2:.1f} km; likely origin window {drift_model['likely_window_hours'][0]}–{drift_model['likely_window_hours'][1]} h before acquisition")
     if severe:
         L(f"Spill quality flags {severe} — candidate statuses capped at 'possible'", "warn")
     if low_conf:
@@ -90,10 +96,16 @@ def run_correlation(spill, positions, params: CorrelationParams):
     for p in positions:
         by_vessel.setdefault(p["mmsi"], []).append(p)
     L(f"{len(positions)} AIS fixes from {len(by_vessel)} vessels inside corridor/time window")
+    if params.fill_gaps:
+        L(f"AIS gap filling {GAP_FILL_VERSION}: dead-reckoning across gaps > {params.gap_threshold_min} min; implausible transits flagged spoof_suspect")
 
     candidates = []
     for mmsi, fixes in sorted(by_vessel.items()):
         fixes.sort(key=lambda p: (p["timestamp"], p["id"]))
+        real_fixes = list(fixes)
+        segments = []
+        if params.fill_gaps:
+            fixes, segments = fill_gaps(fixes, params.gap_threshold_min)
         dists = [distance_to_geom_km(poly, p["lat"], p["lon"]) for p in fixes]
         i_min = min(range(len(fixes)), key=lambda i: (dists[i], i))
         closest, d_min = fixes[i_min], dists[i_min]
@@ -101,6 +113,11 @@ def run_correlation(spill, positions, params: CorrelationParams):
         notes = []
 
         spatial = math.exp(-d_min / (params.corridor_km / 3))
+        gap_penalty = 0.0
+        if closest.get("interpolated"):
+            gap_penalty = clamp(closest["gap_hours"] / 12, 0, 0.6)
+            spatial *= 1 - gap_penalty
+            notes.append(f"closest approach is an interpolated position inside a {closest['gap_hours']}h AIS gap — spatial score reduced {gap_penalty * 100:.0f}%")
         if gap_h >= 0:
             temporal = clamp(1 - gap_h / params.window_hours_before)
         else:
@@ -111,11 +128,11 @@ def run_correlation(spill, positions, params: CorrelationParams):
             temporal *= 0.5
             notes.append(f"time gap {gap_h:.1f}h exceeds 1.5× estimated spill age {spill_age}h")
 
-        n = len(fixes)
+        n = len(real_fixes)
         max_gap = 0.0
         jumps = set()
         dark_over_spill = False
-        for a, b in zip(fixes, fixes[1:]):
+        for a, b in zip(real_fixes, real_fixes[1:]):
             dt_h = (b["timestamp"] - a["timestamp"]).total_seconds() / 3600
             max_gap = max(max_gap, dt_h)
             if dt_h > 0:
@@ -127,6 +144,13 @@ def run_correlation(spill, positions, params: CorrelationParams):
         continuity = 0.0 if n < params.min_positions else clamp(1 - max(0.0, max_gap - 0.5) / 6)
         if dark_over_spill:
             notes.append(f"AIS gap of {max_gap:.1f}h adjacent to closest approach (possible dark period)")
+        spoof_segs = [s for s in segments if s["spoof_suspect"]]
+        if spoof_segs:
+            jumps.add("spoof_suspect")
+            notes.append(f"{len(spoof_segs)} gap(s) require {max(s['required_speed_kn'] for s in spoof_segs):.0f} kn to close — kinematically implausible, flagged spoof_suspect (not interpolated)")
+        filled = [s for s in segments if s["interpolated_points"]]
+        if filled:
+            notes.append(f"{len(filled)} AIS gap(s) totalling {sum(s['gap_hours'] for s in filled):.1f}h filled by dead reckoning ({sum(s['interpolated_points'] for s in filled)} synthetic points, dashed on map)")
 
         sog = closest.get("sog_kn") or 0.0
         cog = closest.get("cog_deg")
@@ -142,23 +166,27 @@ def run_correlation(spill, positions, params: CorrelationParams):
             heading_detail = f"COG {cog:.0f}° vs spill axis {axis:.0f}° (Δ {diff:.0f}°)"
 
         backprojected = None
+        drift_match = None
         if gap_h < 0:
             drift, drift_detail = 0.15, "vessel closest approach post-dates acquisition — cannot precede observed slick"
         elif degraded:
             drift, drift_detail = 0.5, "no wind/current — neutral score, attribution degraded"
         else:
-            vx, vy = drift_vector_ms(wind, current)
-            dt_s = gap_h * 3600
-            dx_km, dy_km = -vx * dt_s / 1000, -vy * dt_s / 1000
-            bp_lat = centroid.y + dy_km / 110.574
-            bp_lon = centroid.x + dx_km / (111.32 * math.cos(math.radians(centroid.y)))
-            d_bp = haversine_km(closest["lat"], closest["lon"], bp_lat, bp_lon)
-            drift = math.exp(-d_bp / (params.corridor_km / 2))
-            backprojected = {"type": "Point", "coordinates": [round(bp_lon, 6), round(bp_lat, 6)]}
-            drift_detail = f"spill back-projected {gap_h:.1f}h → {d_bp:.1f} km from vessel fix"
+            from drift import position_at
+            o = position_at(drift_model_path(drift_model), gap_h)
+            backprojected = {"type": "Point", "coordinates": [round(o["lon"], 6), round(o["lat"], 6)]}
+            drift_match = score_fixes(drift_model_path(drift_model), fixes, t0)
+            if drift_match:
+                drift = drift_match["score"]
+                drift_detail = (f"best fix {drift_match['hours_before']}h before acquisition lies {drift_match['distance_km']:.1f} km from back-tracked origin (σ {drift_match['sigma_km']:.1f} km, z={drift_match['z']}) — "
+                                + ("inside 2σ origin envelope" if drift_match["inside_2sigma"] else "outside 2σ origin envelope") + (" · via interpolated position" if drift_match["interpolated"] else ""))
+                if drift_match["interpolated"]:
+                    drift *= 0.8
+            else:
+                drift, drift_detail = 0.2, "no fixes before acquisition inside the 72h model horizon"
 
         flags = set(jumps)
-        for p in fixes:
+        for p in real_fixes:
             flags |= set(p.get("quality_flags", []))
         if not closest.get("imo") and not closest.get("vessel_name"):
             flags.add("missing_identity")
@@ -201,11 +229,12 @@ def run_correlation(spill, positions, params: CorrelationParams):
             "evidence": {
                 "closest_fix": {"id": closest["id"], "timestamp": closest["timestamp"], "lat": closest["lat"], "lon": closest["lon"],
                                 "sog_kn": closest.get("sog_kn"), "cog_deg": closest.get("cog_deg"), "source": closest.get("source")},
-                "distance_km": round(d_min, 3), "time_gap_hours": round(gap_h, 3), "fix_count": n,
-                "max_gap_hours": round(max_gap, 2), "backprojected_centroid": backprojected,
-                "fix_ids": [p["id"] for p in fixes],
+                "distance_km": round(d_min, 3), "time_gap_hours": round(gap_h, 3), "fix_count": n, "interpolated_count": len(fixes) - n,
+                "max_gap_hours": round(max_gap, 2), "backprojected_centroid": backprojected, "drift_match": drift_match, "gap_penalty": round(gap_penalty, 3),
+                "gap_segments": segments, "closest_is_interpolated": bool(closest.get("interpolated")),
+                "fix_ids": [p["id"] for p in real_fixes],
             },
-            "track": [{"timestamp": p["timestamp"], "lat": p["lat"], "lon": p["lon"], "sog_kn": p.get("sog_kn"), "cog_deg": p.get("cog_deg")} for p in fixes[:500]],
+            "track": [{"timestamp": p["timestamp"], "lat": p["lat"], "lon": p["lon"], "sog_kn": p.get("sog_kn"), "cog_deg": p.get("cog_deg"), "interpolated": bool(p.get("interpolated"))} for p in fixes[:800]],
         })
 
     candidates.sort(key=lambda c: (-STATUS_ORDER.index(c["status"]), -c["score"], c["mmsi"]))
@@ -246,6 +275,8 @@ def run_correlation(spill, positions, params: CorrelationParams):
         "severe_flags": severe,
         "ambiguous_multiple_vessels": ambiguous,
         "spill_axis_bearing": axis,
+        "drift_model": drift_model,
+        "gap_fill": {"enabled": params.fill_gaps, "version": GAP_FILL_VERSION if params.fill_gaps else None, "threshold_min": params.gap_threshold_min},
         "candidates": candidates,
         "overall_status": overall,
         "confidence_band": band,

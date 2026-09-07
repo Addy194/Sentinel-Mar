@@ -3,6 +3,7 @@ import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { Radar, LayoutDashboard, Satellite, Activity, ShieldAlert, Users as UsersIcon, LogOut, Map as MapIcon, Eye, Columns2, Globe2, Images } from "lucide-react";
 import { api, hasRole } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import { LiveBell, CriticalBanner } from "@/components/LiveBell";
 
 const links = [
   { to: "/", label: "Surveillance", icon: LayoutDashboard, id: "nav-dashboard-link" },
@@ -64,6 +65,7 @@ export const Layout = () => {
             <span className="pulse-dot" />
             {clock.toISOString().replace("T", " ").slice(0, 19)} UTC
           </div>
+          <LiveBell />
           {user && (
             <div className="flex items-center gap-2 border-l pl-4" style={{ borderColor: "var(--border-default)" }} data-testid="user-chip">
               <div className="text-right leading-tight">
@@ -75,6 +77,7 @@ export const Layout = () => {
           )}
         </div>
       </header>
+      <CriticalBanner />
       <main className="flex-1 overflow-hidden">
         <Outlet />
       </main>

@@ -64,8 +64,15 @@ POST/GET scenes, POST scenes/{id}/detect (mock), POST/GET spill-observations, PO
 - **Events gallery** `/events`: `GET /spill-events` (offset/limit, compound indexes, filters start/end/min_conf/status/source/jurisdiction, thumb path) → react-window virtualized grid, URL-driven filters.
 - Tested: iteration_7 — 20/20 backend, all frontend flows pass. Known cosmetic: console warning "<option> cannot be a child of <span>" (source not found in app code; likely injected/extension).
 
+## Implemented (iteration 8)
+- **Detector feedback**: `POST/GET /cases/{id}/detector-feedback` (TP/FP/uncertain + FP reason enum, versioned, audited, immutable), `GET /detector/precision` (TP/(TP+FP) per detector version, FP-reason breakdown, weekly, pending); Dashboard `DetectorPrecision` card (recharts donut); panel on case Review tab; PDF section under analyst decisions.
+- **Live alert feed**: `events.py` in-process SSE broadcaster; `GET /alerts/stream?token=` (hello/alert/job events, keepalive), `GET /alerts/latest` polling fallback; `LiveFeedProvider` (EventSource → toast, header bell + unread count, critical red pulsing banner + Web-Audio siren for high severity, mute, auto-fallback to 10 s polling). Dashboard/case detail refresh on job completion. 10-minute inactivity auto-logout (`InactivityGuard`).
+- **AIS gap filling** `gapfill.py`: gaps > `gap_threshold_min` (30) dead-reckoned from last SOG/COG blended to next fix (10-min synthetic points, `interpolated` flag); kinematically impossible transits (vs vessel-type max speed) → `spoof_suspect`, not interpolated; continuity uses real fixes only; spatial penalty ∝ gap length when closest approach is interpolated; dashed segments on map + tooltip; `params.fill_gaps` (default on).
+- **Drift back-model** `drift.py` (lagrangian-backtrack-0.1.0): hourly reverse steps ≤72 h (3% wind + current), σ(t) from eddy diffusivity + 35% velocity uncertainty, 2σ origin envelope + most-likely window (from spill age); drift factor = exp(−z²/2) against envelope; layers `drift_envelope`/`drift_likely`/`drift_path` on map; PDF explains. Algorithm version **corr-1.1.0**.
+- Tested: iteration_8 — 15/15 backend, all frontend flows pass.
+
 ## Backlog (prioritized)
-- P1: Resend key (alerts/resets) and aisstream.io key (live AIS) — both flows built, unverified live; U-Net/DeepLab SAR segmentation to replace Otsu heuristic; OpenDrift/HYCOM backward drift; AIS gap interpolation model; retention policies; rate limiting.
+- P1: Resend + aisstream keys; U-Net SAR segmentation; OpenDrift/HYCOM forward+backward; AIS anomaly ML (Isolation Forest); historical spill archive & remediation playbook; petroleum-asset/country search; exponential lockout backoff; field incident reporter (geolocation + EXIF); prosecution export w/ hash.
 - P2: Additional met/ocean providers, replay testing harness, observability/metrics, SAR segmentation model once labeled data exists, separate worker process (Celery/Redis).
 
 ## Known limitations
