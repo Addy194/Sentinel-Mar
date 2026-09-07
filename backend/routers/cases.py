@@ -11,6 +11,7 @@ from models import CorrelateRequest, ReviewCreate, OverrideRequest, REASON_CODES
 from jobs import enqueue, process
 from services import apply_live_environment
 from report import build_pdf
+from storage import get_object
 
 router = APIRouter()
 
@@ -168,6 +169,24 @@ def _geojson(case, spill, result):
     return {"type": "FeatureCollection", "features": features}
 
 
+@router.get("/cases/compare/{a}/{b}")
+async def compare_cases(a: str, b: str, user=Depends(get_current_user)):
+    sides = {}
+    for key, cid in (("a", a), ("b", b)):
+        case = await _case(cid)
+        spill = await db.spill_observations.find_one({"id": case["spill_observation_id"]}, {"_id": 0, "raw_input": 0})
+        result = await _result(cid, None)
+        cands = [{k: v for k, v in c.items() if k != "track"} for c in (result or {}).get("candidates", [])]
+        sides[key] = {"case": case, "geojson": _geojson(case, spill, result), "candidates": cands, "version": (result or {}).get("version", 0)}
+    ma = {c["mmsi"]: c for c in sides["a"]["candidates"]}
+    mb = {c["mmsi"]: c for c in sides["b"]["candidates"]}
+    shared = [{"mmsi": m, "vessel_name": ma[m].get("vessel_name") or mb[m].get("vessel_name"), "vessel_type": ma[m].get("vessel_type"),
+               "a": {"rank": ma[m]["rank"], "score": ma[m]["score"], "status": ma[m]["status"]}, "b": {"rank": mb[m]["rank"], "score": mb[m]["score"], "status": mb[m]["status"]}}
+              for m in ma if m in mb]
+    shared.sort(key=lambda s: s["a"]["rank"] + s["b"]["rank"])
+    return clean({**sides, "shared_vessels": shared, "disclaimer": "Repeat appearance across cases is an investigative lead, not evidence of responsibility."})
+
+
 @router.get("/cases/{case_id}/geojson")
 async def case_geojson(case_id: str, version: Optional[int] = None, user=Depends(get_current_user)):
     case = await _case(case_id)
@@ -186,6 +205,7 @@ async def _bundle(case_id, version):
     entity_ids = [case_id, spill["id"]] + ([scene["id"]] if scene else [])
     audit_events = await db.audit_events.find({"entity_id": {"$in": entity_ids}}, {"_id": 0}).sort("created_at", 1).to_list(2000)
     jobs = await db.jobs.find({"payload.case_id": case_id}, {"_id": 0}).sort("created_at", 1).to_list(200)
+    attachments = await db.attachments.find({"case_id": case_id, "is_deleted": False}, {"_id": 0}).sort("created_at", 1).to_list(200)
     calculations = None
     if result:
         calculations = {"algorithm_version": result["algorithm_version"], "input_hash": result["input_hash"], "params": result["params"],
@@ -202,6 +222,7 @@ async def _bundle(case_id, version):
         "reviews": reviews,
         "audit_history": audit_events,
         "jobs": jobs,
+        "attachments": attachments,
         "disclaimer": "Decision-support evidence bundle. Correlation output indicates possible/probable association only; responsibility requires analyst confirmation and corroborating evidence.",
     })
 
@@ -215,6 +236,15 @@ async def case_evidence(case_id: str, version: Optional[int] = None, user=Depend
 async def case_evidence_pdf(case_id: str, version: Optional[int] = None, user=Depends(get_current_user)):
     bundle = await _bundle(case_id, version)
     bundle["generated_by"] = f"{user.get('name')} <{user['email']}> ({user['role']})"
+    images = []
+    for att in bundle["attachments"]:
+        if att.get("is_image") and len(images) < 6:
+            try:
+                data, _ = await get_object(att["storage_path"])
+                images.append({"caption": att.get("caption") or att["original_filename"], "meta": f"{att['kind']} · {att['original_filename']} · uploaded by {att['uploaded_by']}", "bytes": data})
+            except Exception as e:  # noqa: BLE001
+                images.append({"caption": att.get("caption") or att["original_filename"], "meta": f"fetch failed: {str(e)[:80]}", "bytes": None})
+    bundle["attachment_images"] = images
     pdf = build_pdf(bundle)
     await audit("case", case_id, "evidence.exported", {"format": "pdf", "version": bundle["case"].get("latest_result_version"), "bytes": len(pdf)}, user["email"])
     return Response(content=pdf, media_type="application/pdf",

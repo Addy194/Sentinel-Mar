@@ -30,6 +30,9 @@ async def ensure_indexes():
     await db.watchlist.create_index([("mmsi", 1), ("active", 1)])
     await db.share_links.create_index("token_hash")
     await db.settings.create_index("key", unique=True)
+    await db.attachments.create_index([("case_id", 1), ("is_deleted", 1)])
+    await db.zone_rules.create_index([("zone_code", 1), ("active", 1)])
+    await db.alerts.create_index([("case_id", 1), ("kind", 1), ("rule_id", 1)])
 
 
 def to_utc(dt):

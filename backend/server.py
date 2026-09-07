@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -8,7 +9,8 @@ from starlette.middleware.cors import CORSMiddleware
 from db import db, client, ensure_indexes
 import jobs
 import services  # noqa: F401  (registers job handlers)
-from routers import ingest, cases, system, auth as auth_router, jurisdictions, watchlist, timeline
+from routers import ingest, cases, system, auth as auth_router, jurisdictions, watchlist, timeline, attachments, rules as rules_router
+from storage import init_storage, storage_available
 from auth import seed_users, require_role
 from jurisdiction import seed_zones, apply_to_case
 import marine_regions  # noqa: F401  (registers import_eez job handler)
@@ -25,6 +27,12 @@ async def lifespan(app: FastAPI):
     await seed_users()
     zones_added = await seed_zones()
     jobs.start()
+    if storage_available():
+        try:
+            await asyncio.to_thread(init_storage)
+            logger.info("object storage initialised")
+        except Exception as e:  # noqa: BLE001
+            logger.error("object storage init failed: %s", e)
     try:
         res = await seed_demo()
         logger.info("seed: %s", res)
@@ -55,6 +63,8 @@ api.include_router(auth_router.router)
 api.include_router(jurisdictions.router)
 api.include_router(watchlist.router)
 api.include_router(timeline.router)
+api.include_router(attachments.router)
+api.include_router(rules_router.router)
 api.include_router(ingest.router)
 api.include_router(cases.router)
 api.include_router(system.router)

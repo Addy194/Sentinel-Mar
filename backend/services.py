@@ -1,4 +1,5 @@
 import hashlib
+import logging
 import math
 import random
 from datetime import datetime, timezone, timedelta
@@ -11,6 +12,8 @@ from models import new_id, AISPositionIn, SpillObservationCreate, SceneCreate, C
 from correlation import run_correlation, ALGORITHM_VERSION
 from jobs import handler, job_log
 from weather import fetch_environment
+from notifications import notify_alert
+from rules import evaluate_zone_rules
 
 MOCK_DETECTOR_VERSION = "mock-sar-detector-0.1.0"
 
@@ -65,6 +68,10 @@ async def create_spill_observation(payload: SpillObservationCreate, actor="syste
         case.update({"jurisdictions": [], "primary_jurisdiction": None, "jurisdiction_error": str(e)})
     await audit("spill_observation", spill_id, "spill.created", {"case_id": case_id, "source": payload.source, "processing_version": payload.processing_version}, actor)
     await audit("case", case_id, "case.opened", {"spill_observation_id": spill_id, "primary_jurisdiction": (case.get("primary_jurisdiction") or {}).get("code")}, actor)
+    try:
+        await evaluate_zone_rules(case_id, "case_opened", actor)
+    except Exception as e:  # noqa: BLE001
+        logging.getLogger("services").error("zone rule evaluation failed: %s", e)
     doc.pop("_id", None)
     case.pop("_id", None)
     return doc, case
@@ -203,7 +210,8 @@ async def handle_correlate(job):
                  "result_version": version, "created_at": now}
         await db.alerts.insert_one(dict(alert))
         await audit("alert", alert["id"], "alert.raised", {"case_id": case_id, "version": version}, "system")
-        await job_log(job["id"], "high-confidence alert raised")
+        n = await notify_alert(alert, case)
+        await job_log(job["id"], f"high-confidence alert raised · email {n['status']} ({n['sent']}/{len(n['recipients'])})")
     watch = {w["mmsi"]: w for w in await db.watchlist.find({"active": True}, {"_id": 0}).to_list(1000)}
     hits = [c for c in result["candidates"] if c["mmsi"] in watch]
     for c in hits:
@@ -214,5 +222,9 @@ async def handle_correlate(job):
         await db.alerts.insert_one(dict(alert))
         await db.watchlist.update_one({"id": w["id"]}, {"$inc": {"hits": 1}, "$set": {"last_hit_case": case["case_number"], "last_hit_at": now}})
         await audit("alert", alert["id"], "alert.watchlist_hit", {"case_id": case_id, "mmsi": c["mmsi"], "rank": c["rank"], "version": version}, "system")
-        await job_log(job["id"], f"watchlist hit: {c.get('vessel_name') or c['mmsi']} (#{c['rank']}) — alert raised", "warn")
+        n = await notify_alert(alert, case)
+        await job_log(job["id"], f"watchlist hit: {c.get('vessel_name') or c['mmsi']} (#{c['rank']}) — alert raised · email {n['status']}", "warn")
+    zone_alerts = await evaluate_zone_rules(case_id, "correlated", job.get("actor", "system"))
+    for za in zone_alerts:
+        await job_log(job["id"], f"zone rule '{za['rule_name']}' ({za['zone_code']}) triggered — alert raised", "warn")
     return {"result_id": doc["id"], "version": version, "overall_status": result["overall_status"], "candidates": len(result["candidates"])}

@@ -39,8 +39,15 @@ POST/GET scenes, POST scenes/{id}/detect (mock), POST/GET spill-observations, PO
 - **Case timeline & sharing**: `routers/timeline.py` — `GET /cases/{id}/timeline` (JSON) + `/timeline.html`; supervisor+ `POST /cases/{id}/share` (sha256 token, 1–720 h expiry, note) → public `GET /api/share/{token}` read-only HTML (uses FRONTEND_URL), view counter, revoke. `CaseTimeline` tab in case detail.
 - Tested: iteration_4 — 33/33 backend, all frontend flows pass, no issues.
 
+## Implemented (iteration 5)
+- **Scene imagery & evidence files**: `storage.py` (Emergent Object Storage, `EMERGENT_LLM_KEY`), chunked upload `POST /uploads/init` → `PUT /uploads/{id}/chunks/{i}` → `POST /uploads/{id}/complete` (≤50 MB; png/jpg/webp/tif/pdf/csv/txt/json/geojson; kinds sar_scene…other); `GET /cases/{id}/attachments`, `GET /attachments/{id}/download`, supervisor soft-delete. Images embedded in evidence PDF (section 8), attachments listed on timeline (JSON/HTML/share). Case detail "Files" tab (`Attachments.jsx`).
+- **Alert email notifications**: `notifications.py` — every alert (high-confidence, watchlist, zone rule) emails active supervisors+admins (per-user `notify_alerts` opt-out on Users page) plus admin `alert_recipients`; `alerts_enabled` toggle in Email Settings. Outcome stored on `alert.notification` + `notifications` collection + audit `alert.notified`. **Delivery NOT configured** (no Resend key) → status `not_configured`.
+- **Case comparison**: `GET /cases/compare/{a}/{b}` (geojson + candidates + shared_vessels); `/compare` page with split / overlay (side-tinted) maps, shared-vessel table, "Compare" button on case detail.
+- **Zone alert rules**: `rules.py` + `routers/rules.py` — supervisor CRUD `/zone-rules` (zone_code, optional min_area_km2 / min_confidence, severity, primary_only, note), evaluated on case open, after correlation, and `POST /zone-rules/evaluate`; dedup per case+rule; `ZoneRules.jsx` panel on Zones page.
+- Tested: iteration_5 — 29/29 backend, all frontend flows pass, no issues.
+
 ## Backlog (prioritized)
-- P1: Admin enters Resend API key + verified sender in Email Settings and sends a test email (delivery unverified); real object storage for scene imagery/evidence artifacts; retention policies; rate limiting; encrypt Resend key at rest.
+- P1: Admin enters Resend API key + verified sender in Email Settings and sends a test email (delivery unverified — alerts + resets then go live); retention policies; rate limiting; encrypt Resend key at rest; GeoTIFF preview/rendering for attachments.
 - P2: Additional met/ocean providers, replay testing harness, observability/metrics, SAR segmentation model once labeled data exists, separate worker process (Celery/Redis).
 
 ## Known limitations

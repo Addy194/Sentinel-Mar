@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from PIL import Image as PILImage
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
@@ -175,5 +176,25 @@ def build_pdf(bundle: dict) -> bytes:
     for e in bundle.get("audit_history", [])[-60:]:
         arows.append([_fmt(e["created_at"]), e["actor"], e["action"], f"{e['entity_type']} {e['entity_id'][:8]}", Paragraph(str(e.get("payload", {}))[:220], small)])
     el.append(table(arows, [W * 0.14, W * 0.18, W * 0.16, W * 0.16, W * 0.36]))
+
+    if bundle.get("attachments"):
+        el.append(Paragraph("8. Attached source imagery & evidence files", h2))
+        frows = [["Uploaded", "Kind", "File", "Caption", "By", "Size"]]
+        for a in bundle["attachments"]:
+            frows.append([_fmt(a["created_at"]), a["kind"], a["original_filename"], a.get("caption") or "—", a["uploaded_by"], f"{a['size'] / 1024:.0f} KB"])
+        el.append(table(frows, [W * 0.14, W * 0.12, W * 0.24, W * 0.24, W * 0.18, W * 0.08]))
+        for img in bundle.get("attachment_images", []):
+            if not img.get("bytes"):
+                el.append(Paragraph(f"{img['caption']} — {img['meta']}", small))
+                continue
+            try:
+                pil = PILImage.open(io.BytesIO(img["bytes"]))
+                ratio = pil.height / pil.width
+                w = W * 0.9
+                h = min(w * ratio, 150 * mm)
+                el.append(Spacer(1, 6))
+                el.append(KeepTogether([Image(io.BytesIO(img["bytes"]), width=h / ratio, height=h), Paragraph(f"<b>{img['caption']}</b> · {img['meta']}", small)]))
+            except Exception as e:  # noqa: BLE001
+                el.append(Paragraph(f"{img['caption']} — image could not be rendered: {e}", small))
     doc.build(el)
     return buf.getvalue()

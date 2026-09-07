@@ -53,9 +53,9 @@ export default function Users() {
         </div>
         <div className="panel overflow-hidden fade-up" data-testid="users-list">
           <table className="w-full text-xs">
-            <thead><tr className="label-mono text-left">{["Name", "Email", "Role", "Status", "Last login", "Actions"].map((h) => <th key={h} className="px-4 py-2 font-normal">{h}</th>)}</tr></thead>
+            <thead><tr className="label-mono text-left">{["Name", "Email", "Role", "Status", "Alert emails", "Last login", "Actions"].map((h) => <th key={h} className="px-4 py-2 font-normal">{h}</th>)}</tr></thead>
             <tbody>
-              {users === null && <tr><td colSpan={6} className="px-4 py-8 text-center font-mono text-xs text-slate-500" data-testid="users-loading">Loading accounts…</td></tr>}
+              {users === null && <tr><td colSpan={7} className="px-4 py-8 text-center font-mono text-xs text-slate-500" data-testid="users-loading">Loading accounts…</td></tr>}
               {users?.map((u) => (
                 <tr key={u.id} data-testid={`user-row-${u.email}`} className="border-t" style={{ borderColor: "var(--border-default)" }}>
                   <td className="px-4 py-2.5">{u.name}{u.id === me?.id && <span className="ml-1 text-slate-500">(you)</span>}</td>
@@ -67,6 +67,7 @@ export default function Users() {
                     </select>
                   </td>
                   <td className="px-4 py-2.5 font-mono text-[10px] uppercase tracking-wider" style={{ color: u.active ? "#10B981" : "#94A3B8" }}>{u.active ? "active" : "deactivated"}</td>
+                  <td className="px-4 py-2.5">{u.role === "analyst" ? <span className="font-mono text-[10px] text-slate-600">—</span> : <label className="flex items-center gap-1.5 font-mono text-[10px] text-slate-300"><input type="checkbox" data-testid={`user-notify-${u.email}`} checked={u.notify_alerts !== false} onChange={(e) => patch(u.id, { notify_alerts: e.target.checked }, e.target.checked ? "Alert emails enabled" : "Alert emails muted")} /> {u.notify_alerts !== false ? "on" : "muted"}</label>}</td>
                   <td className="px-4 py-2.5 font-mono text-slate-400">{fmtTime(u.last_login)}</td>
                   <td className="px-4 py-2.5">
                     <div className="flex items-center gap-1.5">

@@ -4,7 +4,7 @@ import L from "leaflet";
 import { fmtTime } from "@/lib/api";
 
 const RANK_COLORS = ["#FF2A6D", "#FFB703", "#00F0FF", "#9D4EDD", "#38BDF8", "#10B981"];
-const colorFor = (rank) => RANK_COLORS[Math.min((rank || 1) - 1, RANK_COLORS.length - 1)];
+const rankColorFor = (rank) => RANK_COLORS[Math.min((rank || 1) - 1, RANK_COLORS.length - 1)];
 
 const FitBounds = ({ geojson }) => {
   const map = useMap();
@@ -29,7 +29,8 @@ export const trackPositionAt = (feature, t) => {
   return { lat: coords[i][1] + (coords[i + 1][1] - coords[i][1]) * f, lon: coords[i][0] + (coords[i + 1][0] - coords[i][0]) * f, idx: i, gap: ts[i + 1] - ts[i] > 2 * 3600e3 };
 };
 
-export const CaseMap = ({ geojson, selected, onSelect, showTracks = true, showCorridor = true, timeCursor = null, acquisitionTime = null, zones = null }) => {
+export const CaseMap = ({ geojson, selected, onSelect, showTracks = true, showCorridor = true, timeCursor = null, acquisitionTime = null, zones = null, sideColors = null }) => {
+  const colorFor = (rank, side) => (sideColors && side ? sideColors[side] : RANK_COLORS[Math.min((rank || 1) - 1, RANK_COLORS.length - 1)]);
   const layers = useMemo(() => {
     const f = geojson?.features || [];
     return {
@@ -57,7 +58,7 @@ export const CaseMap = ({ geojson, selected, onSelect, showTracks = true, showCo
         <GeoJSON key={`c${i}`} data={f} style={{ color: "#00F0FF", weight: 1, dashArray: "6,6", fillColor: "#00F0FF", fillOpacity: 0.05 }} />
       ))}
       {layers.spill.map((f, i) => (
-        <GeoJSON key={`s${i}-${f.properties.id}-${spillVisible}`} data={f} style={{ color: "#FF2A6D", weight: 2, dashArray: "4,4", fillColor: "#FF2A6D", fillOpacity: spillVisible ? 0.35 : 0.06, opacity: spillVisible ? 1 : 0.35 }}>
+        <GeoJSON key={`s${i}-${f.properties.id}-${spillVisible}`} data={f} style={{ color: sideColors?.[f.properties.side] || "#FF2A6D", weight: 2, dashArray: "4,4", fillColor: sideColors?.[f.properties.side] || "#FF2A6D", fillOpacity: spillVisible ? 0.35 : 0.06, opacity: spillVisible ? 1 : 0.35 }}>
           <Popup><b>Spill observation</b><br />Acquired {fmtTime(f.properties.acquisition_time)}<br />Confidence {Math.round(f.properties.detection_confidence * 100)}% · {f.properties.estimated_area_km2} km²<br />{f.properties.quality_flags?.join(", ") || "no quality flags"}</Popup>
         </GeoJSON>
       ))}
@@ -72,8 +73,8 @@ export const CaseMap = ({ geojson, selected, onSelect, showTracks = true, showCo
           coords = [...coords.slice(0, head.idx + 1), [head.lon, head.lat]];
         }
         return (
-          <Polyline key={`t${p.mmsi}`} positions={coords.map(([lon, lat]) => [lat, lon])}
-            pathOptions={{ color: colorFor(p.rank), weight: dim ? 1.5 : 3, opacity: dim ? 0.3 : 0.85 }}
+          <Polyline key={`t${p.side || ""}${p.mmsi}`} positions={coords.map(([lon, lat]) => [lat, lon])}
+            pathOptions={{ color: colorFor(p.rank, p.side), weight: dim ? 1.5 : 3, opacity: dim ? 0.3 : 0.85 }}
             eventHandlers={{ click: () => onSelect?.(p.mmsi) }} />
         );
       })}
@@ -83,8 +84,8 @@ export const CaseMap = ({ geojson, selected, onSelect, showTracks = true, showCo
         if (!head) return null;
         const dim = selected && selected !== p.mmsi;
         return (
-          <CircleMarker key={`h${p.mmsi}`} center={[head.lat, head.lon]} radius={p.rank === 1 ? 9 : 7}
-            pathOptions={{ color: "#F8FAFC", fillColor: colorFor(p.rank), fillOpacity: dim ? 0.3 : 1, weight: 2, dashArray: head.gap || head.stale ? "3,3" : null, opacity: dim ? 0.3 : 1 }}
+          <CircleMarker key={`h${p.side || ""}${p.mmsi}`} center={[head.lat, head.lon]} radius={p.rank === 1 ? 9 : 7}
+            pathOptions={{ color: "#F8FAFC", fillColor: colorFor(p.rank, p.side), fillOpacity: dim ? 0.3 : 1, weight: 2, dashArray: head.gap || head.stale ? "3,3" : null, opacity: dim ? 0.3 : 1 }}
             eventHandlers={{ click: () => onSelect?.(p.mmsi) }}>
             <Popup><b>#{p.rank} {p.vessel_name || p.mmsi}</b><br />{fmtTime(new Date(timeCursor).toISOString())}{head.gap || head.stale ? <><br /><i>inside AIS gap — position interpolated</i></> : null}</Popup>
           </CircleMarker>
@@ -94,8 +95,8 @@ export const CaseMap = ({ geojson, selected, onSelect, showTracks = true, showCo
         const p = f.properties;
         const [lon, lat] = f.geometry.coordinates;
         return (
-          <CircleMarker key={`f${p.mmsi}`} center={[lat, lon]} radius={p.rank === 1 ? 8 : 6}
-            pathOptions={{ color: colorFor(p.rank), fillColor: colorFor(p.rank), fillOpacity: selected === p.mmsi ? 1 : 0.7, weight: 2 }}
+          <CircleMarker key={`f${p.side || ""}${p.mmsi}`} center={[lat, lon]} radius={p.rank === 1 ? 8 : 6}
+            pathOptions={{ color: colorFor(p.rank, p.side), fillColor: colorFor(p.rank, p.side), fillOpacity: selected === p.mmsi ? 1 : 0.7, weight: 2 }}
             eventHandlers={{ click: () => onSelect?.(p.mmsi) }}>
             <Popup>
               <b>#{p.rank} {p.vessel_name || p.mmsi}</b><br />MMSI {p.mmsi} · score {p.score?.toFixed(3)} · {p.status}<br />
@@ -108,8 +109,8 @@ export const CaseMap = ({ geojson, selected, onSelect, showTracks = true, showCo
       {timeCursor == null && layers.bp.map((f) => {
         const [lon, lat] = f.geometry.coordinates;
         return (
-          <CircleMarker key={`b${f.properties.mmsi}`} center={[lat, lon]} radius={4}
-            pathOptions={{ color: "#F8FAFC", fillColor: colorFor(f.properties.rank), fillOpacity: 0.9, weight: 1, dashArray: "2,2", opacity: selected && selected !== f.properties.mmsi ? 0.2 : 0.9 }}>
+          <CircleMarker key={`b${f.properties.side || ""}${f.properties.mmsi}`} center={[lat, lon]} radius={4}
+            pathOptions={{ color: "#F8FAFC", fillColor: colorFor(f.properties.rank, f.properties.side), fillOpacity: 0.9, weight: 1, dashArray: "2,2", opacity: selected && selected !== f.properties.mmsi ? 0.2 : 0.9 }}>
             <Popup>Drift back-projection of slick centroid to closest approach of {f.properties.vessel_name || f.properties.mmsi}</Popup>
           </CircleMarker>
         );
@@ -119,4 +120,4 @@ export const CaseMap = ({ geojson, selected, onSelect, showTracks = true, showCo
   );
 };
 
-export const rankColor = colorFor;
+export const rankColor = rankColorFor;

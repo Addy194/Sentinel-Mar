@@ -4,7 +4,7 @@ import os
 import re
 import secrets
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
@@ -88,6 +88,8 @@ async def update_user(user_id: str, body: UserUpdate, user=Depends(require_role(
         update["active"] = body.active
     if body.name is not None:
         update["name"] = body.name
+    if body.notify_alerts is not None:
+        update["notify_alerts"] = body.notify_alerts
     if body.password:
         update["password_hash"] = hash_password(body.password)
     if update:
@@ -157,6 +159,8 @@ class EmailSettings(BaseModel):
     resend_api_key: Optional[str] = None
     sender_email: Optional[str] = None
     enabled: Optional[bool] = None
+    alerts_enabled: Optional[bool] = None
+    alert_recipients: Optional[List[str]] = None
 
 
 def _mask(k: str) -> str:
@@ -174,6 +178,8 @@ async def put_email_settings(body: EmailSettings, user=Depends(require_role("adm
     update = {k: v for k, v in body.model_dump(exclude_none=True).items()}
     if "resend_api_key" in update and update["resend_api_key"] == "":
         update["resend_api_key"] = None
+    if "alert_recipients" in update:
+        update["alert_recipients"] = sorted({e.lower().strip() for e in update["alert_recipients"] if "@" in e})
     update.update({"updated_at": datetime.now(timezone.utc), "updated_by": user["email"]})
     await db.settings.update_one({"key": "email"}, {"$set": update}, upsert=True)
     await audit("settings", "email", "settings.email_updated", {k: ("***" if k == "resend_api_key" else v) for k, v in update.items()}, user["email"])

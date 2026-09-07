@@ -58,6 +58,11 @@ async def build_timeline(case_id: str):
             ev.append(_ev(a["created_at"], "export", f"Evidence exported ({a['payload'].get('format')})", f"result v{a['payload'].get('version')}", a["actor"], role_of(a["actor"])))
         elif act == "case.shared":
             ev.append(_ev(a["created_at"], "export", "Timeline share link created", f"expires {a['payload'].get('expires_at')}", a["actor"], role_of(a["actor"])))
+        elif act == "attachment.added":
+            p = a["payload"]
+            ev.append(_ev(a["created_at"], "attachment", f"Evidence file attached — {p.get('filename')}", f"{p.get('kind')} · {p.get('caption') or 'no caption'} · {(p.get('bytes') or 0) / 1024:.0f} KB", a["actor"], role_of(a["actor"]), {"attachment_id": p.get("attachment_id")}))
+        elif act == "attachment.removed":
+            ev.append(_ev(a["created_at"], "attachment", f"Evidence file removed — {a['payload'].get('filename')}", "", a["actor"], role_of(a["actor"])))
     for r in results:
         ev.append(_ev(r["created_at"], "correlation", f"Correlation run v{r['version']} → {r['overall_status']}", f"{r['algorithm_version']} · {len(r['candidates'])} candidates · corridor {r['params']['corridor_km']} km · window −{r['params']['window_hours_before']}h/+{r['params']['window_hours_after']}h · {'DEGRADED (no drift inputs)' if r['degraded'] else 'drift-corrected'} · hash {r['input_hash'][:12]}",
                      r.get("actor"), role_of(r.get("actor")), {"version": r["version"], "status": r["overall_status"]}))
@@ -65,9 +70,10 @@ async def build_timeline(case_id: str):
         ev.append(_ev(rv["created_at"], "decision", f"Analyst decision — {rv['decision'].replace('_', ' ')}", f"{'vessel MMSI ' + rv['vessel_mmsi'] + ' · ' if rv.get('vessel_mmsi') else ''}{', '.join(rv.get('reason_codes') or []) or 'no reason codes'}{' · ' + rv['notes'] if rv.get('notes') else ''} · on result v{rv.get('result_version')} · {rv.get('previous_attribution_status')} → {rv.get('override_to') or ('analyst_confirmed' if rv['decision'] == 'confirm' else 'insufficient_evidence' if rv['decision'] == 'reject' else 'unchanged')}",
                      rv.get("analyst"), rv.get("analyst_role"), {"decision": rv["decision"], "vessel_mmsi": rv.get("vessel_mmsi")}))
     for al in alerts:
-        ev.append(_ev(al["created_at"], "alert", f"Alert raised ({al.get('kind', 'high_confidence')}, {al['severity']})", al["message"] + (f" · acknowledged by {al.get('acknowledged_by')}" if al.get("acknowledged") else " · unacknowledged"), "system", None))
+        ev.append(_ev(al["created_at"], "alert", f"Alert raised ({al.get('kind', 'high_confidence')}, {al['severity']})", al["message"] + (f" · acknowledged by {al.get('acknowledged_by')}" if al.get("acknowledged") else " · unacknowledged") + (f" · email {al['notification']['status']} to {len(al['notification'].get('recipients') or [])}" if al.get("notification") else ""), "system", None))
+    attachments = await db.attachments.find({"case_id": case_id, "is_deleted": False}, {"_id": 0}).sort("created_at", 1).to_list(200)
     ev.sort(key=lambda e: e["t"])
-    return clean({"case": case, "spill_observation": spill, "scene": scene, "events": ev, "generated_at": datetime.now(timezone.utc),
+    return clean({"case": case, "spill_observation": spill, "scene": scene, "events": ev, "attachments": attachments, "generated_at": datetime.now(timezone.utc),
                   "disclaimer": "Decision-support timeline for inter-agency handover. Attribution statuses are analytical, not legal findings of responsibility."})
 
 
@@ -76,7 +82,7 @@ async def case_timeline(case_id: str, user=Depends(get_current_user)):
     return await build_timeline(case_id)
 
 
-KIND_COLOR = {"scene": "#9D4EDD", "spill": "#FF2A6D", "ais": "#38BDF8", "case": "#00F0FF", "env": "#C77DFF", "correlation": "#00F0FF", "decision": "#10B981", "alert": "#FF6B00", "export": "#94A3B8"}
+KIND_COLOR = {"scene": "#9D4EDD", "spill": "#FF2A6D", "ais": "#38BDF8", "case": "#00F0FF", "env": "#C77DFF", "correlation": "#00F0FF", "decision": "#10B981", "alert": "#FF6B00", "export": "#94A3B8", "attachment": "#FFB703"}
 
 
 def render_timeline_html(tl: dict, shared_by: Optional[str] = None, expires_at: Optional[datetime] = None) -> str:
@@ -89,6 +95,9 @@ def render_timeline_html(tl: dict, shared_by: Optional[str] = None, expires_at: 
         who = f"<span class=who>{e(ev['actor'])}{' · ' + e(ev['role']) if ev.get('role') else ''}</span>" if ev.get("actor") else ""
         rows.append(f"<li><span class=dot style='background:{KIND_COLOR.get(ev['kind'], '#94A3B8')}'></span><div class=t>{t}</div><div class=body><div class=title><span class=kind>{e(ev['kind'])}</span>{e(ev['title'])} {who}</div><div class=detail>{e(ev['detail'])}</div></div></li>")
     share_note = f"<p class=share>Shared read-only by {e(shared_by)} · link expires {expires_at.strftime('%Y-%m-%d %H:%MZ')}</p>" if shared_by else ""
+    atts = tl.get("attachments") or []
+    att_html = ("<h3 style='font-size:14px;margin:26px 0 6px'>Attached source imagery &amp; evidence files</h3><ul class=atts>" + "".join(
+        f"<li><span class=kind>{e(a['kind'])}</span> {e(a['original_filename'])} — {e(a.get('caption') or 'no caption')} <span class=who>{e(a['uploaded_by'])}</span></li>" for a in atts) + "</ul>") if atts else ""
     return f"""<!doctype html><html><head><meta charset=utf-8><title>{e(case['case_number'])} — case timeline</title>
 <style>body{{margin:0;background:#0A0E17;color:#F8FAFC;font-family:'IBM Plex Sans',Segoe UI,Arial,sans-serif}}.wrap{{max-width:960px;margin:0 auto;padding:40px 28px}}
 h1{{font-size:30px;margin:0 0 4px;letter-spacing:-.02em}}.mono{{font-family:'JetBrains Mono',Consolas,monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#94A3B8}}
@@ -97,13 +106,13 @@ h1{{font-size:30px;margin:0 0 4px;letter-spacing:-.02em}}.mono{{font-family:'Jet
 ul{{list-style:none;padding:0;margin:24px 0 0;border-left:1px solid #334155}}li{{position:relative;display:grid;grid-template-columns:150px 1fr;gap:14px;padding:10px 0 10px 22px}}
 .dot{{position:absolute;left:-5px;top:16px;width:9px;height:9px;border-radius:50%;box-shadow:0 0 0 3px #0A0E17}}.t{{font-family:Consolas,monospace;font-size:12px;color:#CBD5E1}}
 .title{{font-size:14px;font-weight:600}}.kind{{font-family:Consolas,monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:#94A3B8;margin-right:8px}}.who{{font-size:11px;color:#00F0FF;font-weight:normal;margin-left:6px}}
-.detail{{font-size:12px;color:#94A3B8;margin-top:3px;line-height:1.5}}.disc{{font-size:11px;color:#64748B;border-top:1px solid #1E293B;margin-top:28px;padding-top:12px}}.share{{font-size:11px;color:#FFB703}}
+.detail{{font-size:12px;color:#94A3B8;margin-top:3px;line-height:1.5}}.atts{{border:0;margin-top:6px}}.atts li{{display:block;padding:4px 0;font-size:12px}}.disc{{font-size:11px;color:#64748B;border-top:1px solid #1E293B;margin-top:28px;padding-top:12px}}.share{{font-size:11px;color:#FFB703}}
 @media print{{body{{background:#fff;color:#111}}.card{{background:#f3f4f6;border-color:#ddd}}.detail,.mono,.card b{{color:#555}}ul{{border-color:#999}}.dot{{box-shadow:0 0 0 3px #fff}}}}</style></head><body><div class=wrap>
 <div class=mono>SentinelMar · case timeline · generated {tl['generated_at'].strftime('%Y-%m-%d %H:%MZ')}</div>
 <h1>{e(case['case_number'])}</h1><span class=status>{e(case['attribution_status'].replace('_', ' '))}</span> {share_note}
 <div class=card><div><b>Acquired (UTC)</b>{case['acquisition_time'].strftime('%Y-%m-%d %H:%MZ')}</div><div><b>Source</b>{e(spill['source'])}</div><div><b>Detection confidence</b>{spill['detection_confidence']:.2f}</div><div><b>Area</b>{spill['estimated_area_km2']} km²</div>
 <div><b>Primary jurisdiction</b>{e(pj.get('code') or 'unassigned')}</div><div><b>Authority</b>{e(pj.get('authority') or '—')}</div><div><b>Review state</b>{e(case['review_state'])}</div><div><b>Confirmed vessel</b>{e(case.get('confirmed_vessel_mmsi') or '—')}</div></div>
-<ul>{''.join(rows)}</ul>
+<ul>{''.join(rows)}</ul>{att_html}
 <p class=disc>{e(tl['disclaimer'])}</p></div></body></html>"""
 
 

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { toast } from "sonner";
-import { ArrowLeft, Download, Layers, FileText } from "lucide-react";
+import { ArrowLeft, Download, Layers, FileText, Columns2 } from "lucide-react";
 import { api, apiError, fmtTime, pct } from "@/lib/api";
 import { StatusBadge, BandBadge } from "@/components/StatusBadge";
 import { CaseMap } from "@/components/case/CaseMap";
@@ -11,8 +11,9 @@ import { EvidenceTimeline } from "@/components/case/EvidenceTimeline";
 import { CorrelatePanel } from "@/components/case/CorrelatePanel";
 import { TimeScrubber } from "@/components/case/TimeScrubber";
 import { CaseTimeline } from "@/components/case/CaseTimeline";
+import { Attachments } from "@/components/case/Attachments";
 
-const TABS = [["candidates", "Candidates"], ["review", "Analyst review"], ["timeline", "Timeline"], ["evidence", "Evidence & audit"], ["log", "Processing log"]];
+const TABS = [["candidates", "Candidates"], ["review", "Analyst review"], ["timeline", "Timeline"], ["files", "Files"], ["evidence", "Evidence & audit"], ["log", "Processing log"]];
 const overlayBtn = { background: "rgba(10,14,23,0.85)", border: "1px solid var(--border-highlight)", backdropFilter: "blur(12px)" };
 
 export default function CaseDetail() {
@@ -60,6 +61,7 @@ export default function CaseDetail() {
           <button data-testid="map-toggle-zones-layer" onClick={() => setShowZones(!showZones)} className="inline-flex items-center gap-1 rounded px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-wider" style={{ ...overlayBtn, color: showZones ? "#00F0FF" : "#94A3B8" }}><Layers size={12} /> Zones</button>
           <button data-testid="btn-export-geojson" onClick={exportGeo} className="inline-flex items-center gap-1 rounded px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-wider text-slate-200" style={overlayBtn}><Download size={12} /> GeoJSON</button>
           <button data-testid="btn-export-pdf" disabled={pdfBusy} onClick={exportPdf} className="inline-flex items-center gap-1 rounded px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-wider disabled:opacity-50" style={{ ...overlayBtn, color: "#FFB703" }}><FileText size={12} /> {pdfBusy ? "Building…" : "Evidence PDF"}</button>
+          <Link to={`/compare?a=${id}`} data-testid="btn-compare-case" className="inline-flex items-center gap-1 rounded px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-wider text-slate-200" style={overlayBtn}><Columns2 size={12} /> Compare</Link>
         </div>
         <div className="absolute bottom-3 left-3 right-3 z-[1000] flex items-end gap-3">
           <div className="rounded p-3 text-[11px] shrink-0" style={{ background: "rgba(10,14,23,0.85)", border: "1px solid var(--border-default)", backdropFilter: "blur(12px)" }} data-testid="map-legend">
@@ -112,6 +114,7 @@ export default function CaseDetail() {
           )}
           {tab === "review" && <ReviewForm caseId={id} candidates={cands?.candidates} reasonCodes={config?.reason_codes} resultVersion={cands?.version} onSaved={load} />}
           {tab === "timeline" && <CaseTimeline caseId={id} caseNumber={c.case_number} />}
+          {tab === "files" && <Attachments caseId={id} onChanged={load} />}
           {tab === "evidence" && <EvidenceTimeline evidence={evidence} />}
           {tab === "log" && (
             <div className="p-4 font-mono text-[11px] leading-relaxed" data-testid="processing-log">

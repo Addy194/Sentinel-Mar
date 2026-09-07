@@ -142,6 +142,7 @@ class UserUpdate(BaseModel):
     role: Optional[str] = None
     active: Optional[bool] = None
     name: Optional[str] = None
+    notify_alerts: Optional[bool] = None
     password: Optional[str] = Field(default=None, min_length=8)
 
 

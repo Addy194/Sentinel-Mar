@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { Map as MapIcon, Plus, Trash2, RefreshCw, Globe } from "lucide-react";
 import { api, apiError, hasRole, pollJob } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import { ZoneRules } from "@/components/zones/ZoneRules";
 
 const TYPE_COLOR = { eez: "#00F0FF", territorial: "#38BDF8", port_state: "#FFB703", custom: "#9D4EDD" };
 const inputCls = "w-full rounded border bg-slate-900/60 px-2.5 py-1.5 font-mono text-xs text-slate-100 outline-none focus:border-cyan-400/60";
@@ -81,6 +82,7 @@ export default function Zones() {
             </div>
           ))}
         </div>
+        <ZoneRules zones={zones} />
         {admin && (
           <div className="mt-5 rounded border p-4" style={{ borderColor: "rgba(0,240,255,0.35)", background: "rgba(0,240,255,0.04)" }} data-testid="zone-import-form">
             <div className="mb-2 flex items-center gap-2"><Globe size={14} color="#00F0FF" /><h2 className="font-display font-semibold">Import official EEZ boundaries</h2></div>

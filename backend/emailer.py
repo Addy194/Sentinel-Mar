@@ -17,6 +17,8 @@ async def get_config() -> dict:
         "api_key": s.get("resend_api_key") or os.environ.get("RESEND_API_KEY") or "",
         "sender_email": s.get("sender_email") or os.environ.get("SENDER_EMAIL") or "onboarding@resend.dev",
         "enabled": s.get("enabled", True),
+        "alerts_enabled": s.get("alerts_enabled", True),
+        "alert_recipients": s.get("alert_recipients") or [],
         "source": "settings" if s.get("resend_api_key") else ("env" if os.environ.get("RESEND_API_KEY") else "none"),
         "updated_at": s.get("updated_at"), "updated_by": s.get("updated_by"), "last_test": s.get("last_test"),
     }
