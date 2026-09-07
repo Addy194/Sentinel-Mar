@@ -9,8 +9,9 @@ from starlette.middleware.cors import CORSMiddleware
 from db import db, client, ensure_indexes
 import jobs
 import services  # noqa: F401  (registers job handlers)
-from routers import ingest, cases, system, auth as auth_router, jurisdictions, watchlist, timeline, attachments, rules as rules_router, satellite, ais_live as ais_live_router
+from routers import ingest, cases, system, auth as auth_router, jurisdictions, watchlist, timeline, attachments, rules as rules_router, satellite, ais_live as ais_live_router, scene_watch as scene_watch_router, imagery
 import ais_live
+import scene_watch  # noqa: F401  (registers scene_watch_poll job handler)
 from storage import init_storage, storage_available
 from auth import seed_users, require_role
 from jurisdiction import seed_zones, apply_to_case
@@ -69,6 +70,8 @@ api.include_router(attachments.router)
 api.include_router(rules_router.router)
 api.include_router(satellite.router)
 api.include_router(ais_live_router.router)
+api.include_router(scene_watch_router.router)
+api.include_router(imagery.router)
 api.include_router(ingest.router)
 api.include_router(cases.router)
 api.include_router(system.router)

@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, ConfigDict
 ATTRIBUTION_STATUSES = ["indeterminate", "insufficient_evidence", "possible", "probable", "analyst_confirmed"]
 SPILL_QUALITY_FLAGS = [
     "cloud_contaminated", "sunglint", "low_wind", "natural_seep_suspect", "conflicting_source",
-    "uncertain_age", "partial_coverage", "lookalike_suspect",
+    "uncertain_age", "partial_coverage", "lookalike_suspect", "experimental_detector",
 ]
 AIS_QUALITY_FLAGS = ["spoof_suspect", "position_jump", "implausible_speed", "naive_timestamp", "stale", "missing_identity", "future_timestamp"]
 REASON_CODES = {

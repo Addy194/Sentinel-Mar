@@ -53,8 +53,19 @@ POST/GET scenes, POST scenes/{id}/detect (mock), POST/GET spill-observations, PO
 - Mock detector kept as labelled placeholder.
 - Tested: iteration_6 — 19/19 backend, all frontend flows pass; preview retry/cache added after review.
 
+## Implemented (iteration 7)
+- **Tile performance**: lazy/visible-first tiles (`updateWhenIdle`, `keepBuffer:0`) on all maps + GIBS; Explorer previews load only when cards scroll into view; quicklooks cached in object storage (`scene.quicklook_path`).
+- **Auto Scene Watch**: `scene_watches` (bbox, collection, auto_detect, last_polled); `.emergent/crons.yml` every 3 h → `POST /cron/scene-watch` (Bearer `WEBHOOK_CRON_SECRET`, idempotent on X-Webhook-Id) enqueues `scene_watch_poll` job; registers new passes, runs detector, raises `new_scene` alerts + email. Supervisor CRUD + "Poll now"; Explorer sidebar panel "Watch this view".
+- **AIS density heatmap**: `GET /ais/density` server-side grid aggregation (zoom-sized bins, 60 s cache) → leaflet.heat layer on Explorer (24 h / 7 d / 90 d). *(Substituted for PostGIS/H3/MVT/Deck.gl to stay on the Mongo + Leaflet stack.)*
+- **Scene overlay**: `GET /scenes/{id}/quicklook` + `/overlay` (EPSG:4326 bbox bounds) → Leaflet ImageOverlay on case map with toggle + opacity slider.
+- **Dark-spot detector (EXPERIMENTAL)**: `detector.py` — OpenCV Gaussian + Otsu threshold on S1 VV quicklook, morphology, contour elongation ≥2.2, pixel→lon/lat affine via scene bbox; confidence ≤0.55, flags `lookalike_suspect`+`experimental_detector`; WebP crop thumbnail attached to each case. Replaces mock for STAC scenes (`detect_scene`); mock kept for imagery-less scenes.
+- **Focus spill**: turf bbox of spill + top candidate, `flyToBounds`; marker label "TOP CANDIDATE — not confirmed" vs "RESPONSIBLE (analyst confirmed)" only when review_state confirmed for that MMSI.
+- **Before/After**: `GET /cases/{id}/before-after` (STAC nearest scene before/after, S1 or S2, ±N days) → two synchronised Leaflet maps with ImageOverlay + spill polygon.
+- **Events gallery** `/events`: `GET /spill-events` (offset/limit, compound indexes, filters start/end/min_conf/status/source/jurisdiction, thumb path) → react-window virtualized grid, URL-driven filters.
+- Tested: iteration_7 — 20/20 backend, all frontend flows pass. Known cosmetic: console warning "<option> cannot be a child of <span>" (source not found in app code; likely injected/extension).
+
 ## Backlog (prioritized)
-- P1: Admin enters Resend API key (alerts + resets) and aisstream.io key (live AIS) — both flows built, delivery/streaming unverified; real SAR dark-spot detector on Sentinel-1 quicklooks; retention policies; rate limiting.
+- P1: Resend key (alerts/resets) and aisstream.io key (live AIS) — both flows built, unverified live; U-Net/DeepLab SAR segmentation to replace Otsu heuristic; OpenDrift/HYCOM backward drift; AIS gap interpolation model; retention policies; rate limiting.
 - P2: Additional met/ocean providers, replay testing harness, observability/metrics, SAR segmentation model once labeled data exists, separate worker process (Celery/Redis).
 
 ## Known limitations

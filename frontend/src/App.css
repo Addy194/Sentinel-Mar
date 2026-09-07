@@ -1,1 +1,4 @@
 .App { height: 100%; }
+
+.focus-tip { background: rgba(10,14,23,0.92); color: #F8FAFC; border: 1px solid #FFB703; font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
+.focus-tip::before { border-top-color: #FFB703; }

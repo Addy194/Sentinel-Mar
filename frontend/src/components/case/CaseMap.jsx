@@ -1,8 +1,15 @@
 import { useEffect, useMemo } from "react";
-import { MapContainer, TileLayer, GeoJSON, CircleMarker, Polyline, Popup, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, GeoJSON, CircleMarker, Polyline, Popup, Tooltip, ImageOverlay, useMap } from "react-leaflet";
 import L from "leaflet";
 import { fmtTime } from "@/lib/api";
 import { GibsLayer } from "@/components/map/GibsLayer";
+import { TILE_PERF, OSM_URL } from "@/components/map/tiles";
+
+const FitTo = ({ bounds }) => {
+  const map = useMap();
+  useEffect(() => { if (bounds) map.flyToBounds(bounds, { padding: [80, 80], maxZoom: 13, duration: 0.8 }); }, [bounds, map]);
+  return null;
+};
 
 const RANK_COLORS = ["#FF2A6D", "#FFB703", "#00F0FF", "#9D4EDD", "#38BDF8", "#10B981"];
 const rankColorFor = (rank) => RANK_COLORS[Math.min((rank || 1) - 1, RANK_COLORS.length - 1)];
@@ -30,7 +37,7 @@ export const trackPositionAt = (feature, t) => {
   return { lat: coords[i][1] + (coords[i + 1][1] - coords[i][1]) * f, lon: coords[i][0] + (coords[i + 1][0] - coords[i][0]) * f, idx: i, gap: ts[i + 1] - ts[i] > 2 * 3600e3 };
 };
 
-export const CaseMap = ({ geojson, selected, onSelect, showTracks = true, showCorridor = true, timeCursor = null, acquisitionTime = null, zones = null, sideColors = null, gibs = null }) => {
+export const CaseMap = ({ geojson, selected, onSelect, showTracks = true, showCorridor = true, timeCursor = null, acquisitionTime = null, zones = null, sideColors = null, gibs = null, overlay = null, fitTo = null, highlight = null }) => {
   const colorFor = (rank, side) => (sideColors && side ? sideColors[side] : RANK_COLORS[Math.min((rank || 1) - 1, RANK_COLORS.length - 1)]);
   const layers = useMemo(() => {
     const f = geojson?.features || [];
@@ -48,8 +55,15 @@ export const CaseMap = ({ geojson, selected, onSelect, showTracks = true, showCo
   return (
     <div className="h-full w-full" data-testid="case-map">
     <MapContainer center={[53.5, 3.8]} zoom={9} className="h-full w-full" zoomControl>
-      <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; OpenStreetMap contributors' className="dark-tiles" />
+      <TileLayer url={OSM_URL} attribution='&copy; OpenStreetMap contributors' className="dark-tiles" {...TILE_PERF} />
       {gibs && acquisitionTime && <GibsLayer layer={gibs.layer} date={acquisitionTime.slice(0, 10)} template={gibs.template} />}
+      {overlay?.url && overlay.bounds && <ImageOverlay url={overlay.url} bounds={overlay.bounds} opacity={overlay.opacity ?? 0.8} zIndex={5} />}
+      <FitTo bounds={fitTo} />
+      {highlight && (
+        <CircleMarker center={[highlight.lat, highlight.lon]} radius={14} pathOptions={{ color: highlight.confirmed ? "#FF2A6D" : "#FFB703", weight: 3, fillOpacity: 0.15, dashArray: highlight.confirmed ? null : "4,4" }}>
+          <Tooltip permanent direction="top" offset={[0, -14]} className="focus-tip"><span data-testid="focus-vessel-label">{highlight.confirmed ? "RESPONSIBLE (analyst confirmed)" : "TOP CANDIDATE — not confirmed"} · {highlight.name}</span></Tooltip>
+        </CircleMarker>
+      )}
       <FitBounds geojson={geojson} />
       {zones?.features?.length > 0 && (
         <GeoJSON key={`zones-${zones.features.length}`} data={zones}

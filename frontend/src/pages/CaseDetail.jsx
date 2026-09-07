@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { toast } from "sonner";
-import { ArrowLeft, Download, Layers, FileText, Columns2, Globe2 } from "lucide-react";
+import bbox from "@turf/bbox";
+import { ArrowLeft, Download, Layers, FileText, Columns2, Globe2, Crosshair, Image as ImageIcon } from "lucide-react";
 import { api, apiError, fmtTime, pct } from "@/lib/api";
 import { StatusBadge, BandBadge } from "@/components/StatusBadge";
 import { CaseMap } from "@/components/case/CaseMap";
@@ -12,8 +13,9 @@ import { CorrelatePanel } from "@/components/case/CorrelatePanel";
 import { TimeScrubber } from "@/components/case/TimeScrubber";
 import { CaseTimeline } from "@/components/case/CaseTimeline";
 import { Attachments } from "@/components/case/Attachments";
+import { BeforeAfter } from "@/components/case/BeforeAfter";
 
-const TABS = [["candidates", "Candidates"], ["review", "Analyst review"], ["timeline", "Timeline"], ["files", "Files"], ["evidence", "Evidence & audit"], ["log", "Processing log"]];
+const TABS = [["candidates", "Candidates"], ["review", "Analyst review"], ["timeline", "Timeline"], ["files", "Files"], ["beforeafter", "Before / After"], ["evidence", "Evidence & audit"], ["log", "Processing log"]];
 const overlayBtn = { background: "rgba(10,14,23,0.85)", border: "1px solid var(--border-highlight)", backdropFilter: "blur(12px)" };
 
 export default function CaseDetail() {
@@ -32,6 +34,12 @@ export default function CaseDetail() {
   const [showZones, setShowZones] = useState(true);
   const [satMeta, setSatMeta] = useState(null);
   const [showSat, setShowSat] = useState(false);
+  const [overlayMeta, setOverlayMeta] = useState(null);
+  const [overlayUrl, setOverlayUrl] = useState(null);
+  const [showOverlay, setShowOverlay] = useState(false);
+  const [overlayOpacity, setOverlayOpacity] = useState(0.8);
+  const [fitTo, setFitTo] = useState(null);
+  const [focus, setFocus] = useState(false);
 
   const load = useCallback(async () => {
     const [a, b, g, e, cfg, z] = await Promise.all([api.get(`/cases/${id}`), api.get(`/cases/${id}/candidates`), api.get(`/cases/${id}/geojson`), api.get(`/cases/${id}/evidence`), api.get("/config/defaults"), api.get("/jurisdictions/geojson")]);
@@ -39,6 +47,32 @@ export default function CaseDetail() {
   }, [id]);
   useEffect(() => { load().catch((e) => toast.error(apiError(e))); }, [load]);
   useEffect(() => { api.get("/satellite/collections").then((r) => setSatMeta(r.data)).catch(() => {}); }, []);
+  useEffect(() => {
+    if (!c?.scene_id) return undefined;
+    api.get(`/scenes/${c.scene_id}/overlay`).then((r) => setOverlayMeta(r.data)).catch(() => {});
+  }, [c?.scene_id]);
+  useEffect(() => {
+    if (!showOverlay || overlayUrl || !overlayMeta?.has_quicklook) return undefined;
+    let u;
+    api.get(`/scenes/${c.scene_id}/quicklook`, { responseType: "blob", timeout: 120000 }).then((r) => { u = URL.createObjectURL(r.data); setOverlayUrl(u); }).catch((e) => toast.error(apiError(e)));
+    return undefined;
+  }, [showOverlay, overlayUrl, overlayMeta, c?.scene_id]);
+
+  const top = cands?.candidates?.[0];
+  const confirmedTop = top && c?.review_state === "confirmed" && c?.confirmed_vessel_mmsi === top.mmsi;
+  const highlight = useMemo(() => {
+    if (!focus || !top) return null;
+    const cf = top.evidence.closest_fix;
+    return { lat: cf.lat, lon: cf.lon, name: `${top.vessel_name || top.mmsi} (#${top.rank}, ${top.status})`, confirmed: !!confirmedTop };
+  }, [focus, top, confirmedTop]);
+  const focusSpill = () => {
+    const spillF = geo?.features?.filter((f) => f.properties.layer === "spill") || [];
+    if (!spillF.length) return;
+    const feats = [...spillF];
+    if (top) feats.push({ type: "Feature", geometry: { type: "Point", coordinates: [top.evidence.closest_fix.lon, top.evidence.closest_fix.lat] }, properties: {} });
+    const [w, s, e, n] = bbox({ type: "FeatureCollection", features: feats });
+    setFitTo([[s, w], [n, e]]); setFocus(true); setSelected(top?.mmsi || null);
+  };
 
   const saveBlob = (blob, name) => { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; a.click(); URL.revokeObjectURL(a.href); };
   const exportGeo = () => saveBlob(new Blob([JSON.stringify(geo, null, 2)], { type: "application/geo+json" }), `${c.case_number}.geojson`);
@@ -57,7 +91,8 @@ export default function CaseDetail() {
   return (
     <div className="flex h-full overflow-hidden" data-testid="case-detail">
       <div className="relative flex-1">
-        <CaseMap geojson={geo} selected={selected} onSelect={setSelected} showTracks={showTracks} timeCursor={cursor} acquisitionTime={c.acquisition_time} zones={showZones ? zones : null} gibs={showSat && satMeta ? { layer: satMeta.basemaps[0], template: satMeta.gibs_template } : null} />
+        <CaseMap geojson={geo} selected={selected} onSelect={setSelected} showTracks={showTracks} timeCursor={cursor} acquisitionTime={c.acquisition_time} zones={showZones ? zones : null} gibs={showSat && satMeta ? { layer: satMeta.basemaps[0], template: satMeta.gibs_template } : null}
+          overlay={showOverlay && overlayUrl && overlayMeta ? { url: overlayUrl, bounds: overlayMeta.bounds, opacity: overlayOpacity } : null} fitTo={fitTo} highlight={highlight} />
         <div className="absolute left-3 top-3 z-[1000] flex items-center gap-2">
           <Link to="/" data-testid="back-to-dashboard" className="inline-flex items-center gap-1 rounded px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-wider text-slate-200" style={overlayBtn}><ArrowLeft size={12} /> Cases</Link>
           <button data-testid="map-toggle-ais-layer" onClick={() => setShowTracks(!showTracks)} className="inline-flex items-center gap-1 rounded px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-wider" style={{ ...overlayBtn, color: showTracks ? "#00F0FF" : "#94A3B8" }}><Layers size={12} /> AIS tracks</button>
@@ -66,6 +101,13 @@ export default function CaseDetail() {
           <button data-testid="btn-export-geojson" onClick={exportGeo} className="inline-flex items-center gap-1 rounded px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-wider text-slate-200" style={overlayBtn}><Download size={12} /> GeoJSON</button>
           <button data-testid="btn-export-pdf" disabled={pdfBusy} onClick={exportPdf} className="inline-flex items-center gap-1 rounded px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-wider disabled:opacity-50" style={{ ...overlayBtn, color: "#FFB703" }}><FileText size={12} /> {pdfBusy ? "Building…" : "Evidence PDF"}</button>
           <Link to={`/compare?a=${id}`} data-testid="btn-compare-case" className="inline-flex items-center gap-1 rounded px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-wider text-slate-200" style={overlayBtn}><Columns2 size={12} /> Compare</Link>
+          <button data-testid="btn-focus-spill" onClick={focusSpill} className="inline-flex items-center gap-1 rounded px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-wider" style={{ ...overlayBtn, color: focus ? "#FFB703" : "#F8FAFC" }}><Crosshair size={12} /> Focus spill</button>
+          {overlayMeta?.has_quicklook && (
+            <span className="inline-flex items-center gap-2 rounded px-2.5 py-1.5" style={overlayBtn} data-testid="scene-overlay-control">
+              <button data-testid="map-toggle-scene-overlay" onClick={() => setShowOverlay(!showOverlay)} className="inline-flex items-center gap-1 font-mono text-[11px] uppercase tracking-wider" style={{ color: showOverlay ? "#00F0FF" : "#94A3B8" }}><ImageIcon size={12} /> SAR quicklook</button>
+              {showOverlay && <input data-testid="scene-overlay-opacity" type="range" min="0" max="1" step="0.05" value={overlayOpacity} onChange={(e) => setOverlayOpacity(+e.target.value)} className="w-20" />}
+            </span>
+          )}
         </div>
         <div className="absolute bottom-3 left-3 right-3 z-[1000] flex items-end gap-3">
           <div className="rounded p-3 text-[11px] shrink-0" style={{ background: "rgba(10,14,23,0.85)", border: "1px solid var(--border-default)", backdropFilter: "blur(12px)" }} data-testid="map-legend">
@@ -97,7 +139,7 @@ export default function CaseDetail() {
             {c.primary_jurisdiction && <span data-testid="case-jurisdiction-chip" title={c.primary_jurisdiction.name} className="rounded px-1.5 py-0.5 font-mono text-[10px] text-cyan-300" style={{ background: "rgba(0,240,255,0.08)", border: "1px solid rgba(0,240,255,0.35)" }}>⚖ {c.primary_jurisdiction.code} · {c.primary_jurisdiction.authority}</span>}
             {c.jurisdictions?.filter((z) => z.code !== c.primary_jurisdiction?.code).map((z) => <span key={z.code} data-testid={`case-jurisdiction-other-${z.code}`} className="rounded px-1.5 py-0.5 font-mono text-[10px] text-slate-400" style={{ border: "1px solid var(--border-highlight)" }}>also {z.code} ({Math.round(z.overlap_fraction * 100)}%)</span>)}
             {!c.primary_jurisdiction && <span data-testid="case-jurisdiction-none" className="rounded px-1.5 py-0.5 font-mono text-[10px] text-slate-500" style={{ border: "1px solid var(--border-highlight)" }}>jurisdiction unassigned</span>}
-            {spill?.quality_flags?.map((f) => <span key={f} data-testid={`spill-flag-${f}`} className="rounded px-1.5 py-0.5 font-mono text-[10px] text-amber-300" style={{ background: "rgba(255,183,3,0.12)", border: "1px solid rgba(255,183,3,0.4)" }}>{f}</span>)}
+            {spill?.quality_flags?.map((f) => <span key={f} data-testid={`spill-flag-${f}`} className={`rounded px-1.5 py-0.5 font-mono text-[10px] ${f === "experimental_detector" ? "text-rose-200" : "text-amber-300"}`} style={f === "experimental_detector" ? { background: "rgba(255,42,109,0.15)", border: "1px dashed rgba(255,42,109,0.7)" } : { background: "rgba(255,183,3,0.12)", border: "1px solid rgba(255,183,3,0.4)" }}>{f === "experimental_detector" ? "⚠ EXPERIMENTAL dark-spot detector" : f}</span>)}
             {cands?.degraded && <span data-testid="degraded-flag" className="rounded px-1.5 py-0.5 font-mono text-[10px] text-purple-300" style={{ background: "rgba(157,78,221,0.12)", border: "1px solid rgba(157,78,221,0.4)" }}>degraded: no drift inputs</span>}
             {cands?.ambiguous_multiple_vessels && <span data-testid="ambiguous-flag" className="rounded px-1.5 py-0.5 font-mono text-[10px] text-amber-300" style={{ background: "rgba(255,183,3,0.12)", border: "1px solid rgba(255,183,3,0.4)" }}>multiple-vessel ambiguity</span>}
             {c.confirmed_vessel_mmsi && <span data-testid="confirmed-vessel" className="rounded px-1.5 py-0.5 font-mono text-[10px] text-emerald-300" style={{ background: "rgba(16,185,129,0.12)", border: "1px solid rgba(16,185,129,0.4)" }}>confirmed MMSI {c.confirmed_vessel_mmsi}</span>}
@@ -119,6 +161,7 @@ export default function CaseDetail() {
           {tab === "review" && <ReviewForm caseId={id} candidates={cands?.candidates} reasonCodes={config?.reason_codes} resultVersion={cands?.version} onSaved={load} />}
           {tab === "timeline" && <CaseTimeline caseId={id} caseNumber={c.case_number} />}
           {tab === "files" && <Attachments caseId={id} onChanged={load} />}
+          {tab === "beforeafter" && <div className="h-[520px]"><BeforeAfter caseId={id} /></div>}
           {tab === "evidence" && <EvidenceTimeline evidence={evidence} />}
           {tab === "log" && (
             <div className="p-4 font-mono text-[11px] leading-relaxed" data-testid="processing-log">

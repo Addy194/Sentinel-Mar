@@ -33,6 +33,10 @@ async def ensure_indexes():
     await db.attachments.create_index([("case_id", 1), ("is_deleted", 1)])
     await db.zone_rules.create_index([("zone_code", 1), ("active", 1)])
     await db.alerts.create_index([("case_id", 1), ("kind", 1), ("rule_id", 1)])
+    await db.cases.create_index([("acquisition_time", -1), ("detection_confidence", -1)])
+    await db.cases.create_index([("primary_jurisdiction.code", 1), ("acquisition_time", -1)])
+    await db.cron_runs.create_index("run_id", unique=True)
+    await db.scene_watches.create_index("active")
 
 
 def to_utc(dt):

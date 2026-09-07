@@ -72,7 +72,7 @@ async def register(body: RegisterRequest, user=Depends(require_role("analyst")))
     payload = SceneCreate(provider=it["provider"], provider_scene_id=it["stac_id"], sensor_mode=it.get("instrument_mode") or it.get("product_type"),
                           polarization="+".join(it["polarizations"]) if it.get("polarizations") else None, acquisition_time=it["datetime"],
                           footprint=it["footprint"], storage_ref=it["stac_href"],
-                          metadata={"stac_collection": it["collection"], "platform": it.get("platform"), "orbit_state": it.get("orbit_state"), "relative_orbit": it.get("relative_orbit"),
+                          metadata={"stac_collection": it["collection"], "platform": it.get("platform"), "orbit_state": it.get("orbit_state"), "relative_orbit": it.get("relative_orbit"), "bbox": it.get("bbox"),
                                     "cloud_cover": it.get("cloud_cover"), "preview_href": it.get("preview_href"), "thumbnail_href": it.get("thumbnail_href"), "source": "Microsoft Planetary Computer STAC"})
     try:
         scene = await create_scene(payload, user["email"])
@@ -80,9 +80,14 @@ async def register(body: RegisterRequest, user=Depends(require_role("analyst")))
         raise HTTPException(400, str(e))
     out = {"scene": scene, "already_registered": False}
     if body.detect:
-        from services import mock_detect
-        spill, case = await mock_detect(scene, user["email"])
-        out.update({"spill_observation": spill, "case": case, "detector_note": "Mock detector output — placeholder, not a validated SAR segmentation result."})
+        from detector import detect_scene
+        try:
+            det = await detect_scene(scene, user["email"])
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(502, f"detector failed: {str(e)[:200]}")
+        first = det["cases"][0] if det.get("cases") else None
+        case = await db.cases.find_one({"id": first["case_id"]}, {"_id": 0}) if first else None
+        out.update({"detection": det, "case": case, "detector_note": det["note"]})
     return clean(out)
 
 

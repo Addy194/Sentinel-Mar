@@ -49,7 +49,7 @@ export default function Zones() {
     <div className="flex h-full overflow-hidden" data-testid="zones-page">
       <div className="relative flex-1">
         <MapContainer center={[54.0, 4.0]} zoom={6} className="h-full w-full">
-          <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="&copy; OpenStreetMap contributors" className="dark-tiles" />
+          <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="&copy; OpenStreetMap contributors" className="dark-tiles" updateWhenIdle updateWhenZooming={false} keepBuffer={0} />
           <GeoJSON key={zones.map((z) => z.id + z.active).join("|")} data={geojson}
             style={(ft) => ({ color: TYPE_COLOR[ft.properties.zone_type] || "#94A3B8", weight: 1.5, fillOpacity: 0.12, dashArray: ft.properties.zone_type === "port_state" ? "4,4" : null })}
             onEachFeature={(ft, layer) => layer.bindTooltip(`${ft.properties.code} · ${ft.properties.authority}`, { sticky: true, className: "zone-tip" })} />

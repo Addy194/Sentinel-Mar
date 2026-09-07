@@ -71,6 +71,7 @@ mypy_extensions==1.1.0
 numpy==2.4.6
 oauthlib==3.3.1
 openai==1.99.9
+opencv-python-headless==5.0.0.93
 packaging==26.3
 pandas==3.0.5
 passlib==1.7.4
@@ -112,6 +113,7 @@ rpds-py==2026.6.3
 rsa==4.9.1
 s3transfer==0.19.2
 s5cmd==0.2.0
+scipy==1.17.1
 shapely==2.1.2
 shellingham==1.5.4
 six==1.17.0
