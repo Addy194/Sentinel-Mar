@@ -10,6 +10,7 @@ import { GibsLayer } from "@/components/map/GibsLayer";
 const GIBS_LAYER = { id: "MODIS_Terra_CorrectedReflectance_TrueColor", matrix: "GoogleMapsCompatible_Level9", ext: "jpg" };
 const GIBS_TEMPLATE = "https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/{layer}/default/{time}/{matrix}/{z}/{y}/{x}.{ext}";
 const FOOT_STYLE = { color: "#FF2A6D", weight: 1.5, fillColor: "#FF2A6D", fillOpacity: 0.35 };
+const ORIGIN_STYLE = { color: "#F8FAFC", fillColor: "#FF2A6D", fillOpacity: 1 };
 const ellipse = (lat, lon, rKm, elong, bearing = 60) => {
   const pts = [];
   for (let i = 0; i <= 48; i++) {
@@ -51,7 +52,7 @@ export default function EvidenceVault() {
               <TileLayer url={OSM_URL} className="dark-tiles" {...TILE_PERF} />
               {gibsDate && <GibsLayer layer={GIBS_LAYER} date={gibsDate.toISOString().slice(0, 10)} template={GIBS_TEMPLATE} />}
               {poly && <Polygon positions={poly} pathOptions={FOOT_STYLE}><Tooltip sticky>Day {frame.day} · ≈{frame.area_km2} km² (reconstructed)</Tooltip></Polygon>}
-              <CircleMarker center={[e.lat, e.lon]} radius={5} pathOptions={{ color: "#F8FAFC", fillColor: "#FF2A6D", fillOpacity: 1 }}><Tooltip permanent direction="top">{e.vessel_facility}</Tooltip></CircleMarker>
+              <CircleMarker center={[e.lat, e.lon]} radius={5} pathOptions={ORIGIN_STYLE}><Tooltip permanent direction="top">{e.vessel_facility}</Tooltip></CircleMarker>
             </MapContainer>
           </div>
           <div className="flex flex-wrap items-center gap-3 border-t px-4 py-2" style={{ borderColor: "var(--border-default)", background: "var(--bg-secondary)" }} data-testid="vault-timeline">

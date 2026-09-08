@@ -1,5 +1,6 @@
 """EXPERIMENTAL dark-vessel detection: CFAR-style bright-target search on the Sentinel-1 quicklook, cross-checked against AIS.
 Targets without any AIS fix within DARK_RADIUS_KM around the pass time become 'dark vessel candidates' with a dead-reckoned escape trajectory."""
+import io
 from datetime import datetime, timedelta, timezone
 from typing import List
 
@@ -20,7 +21,7 @@ GUARD, WINDOW, K_SIGMA, MIN_PX, MAX_PX = 3, 15, 4.0, 3, 400
 
 def detect_bright_targets(png: bytes, bbox: list) -> dict:
     """Cell-averaging CFAR: pixel > local mean + K·σ (window minus guard) → compact bright blob."""
-    arr = np.array(Image.open(__import__("io").BytesIO(png)).convert("RGBA"))
+    arr = np.array(Image.open(io.BytesIO(png)).convert("RGBA"))
     h, w = arr.shape[:2]
     vv = arr[:, :, 0].astype(np.float32)
     valid = (arr[:, :, 3] > 0) & (arr[:, :, :3].sum(axis=2) > 6)
@@ -54,36 +55,51 @@ def _trajectory(lat: float, lon: float, heading: float, hours=(1, 2, 3, 6)) -> L
     return [{"h": h, "lat": round(destination(lat, lon, heading, ASSUMED_SPEED_KN * 1.852 * h)[0], 5), "lon": round(destination(lat, lon, heading, ASSUMED_SPEED_KN * 1.852 * h)[1], 5)} for h in hours]
 
 
+def _escape_heading(axis: float, c_lat: float, c_lon: float, t: dict) -> float:
+    """Along the slick major axis, in the sense pointing away from the spill centroid."""
+    toward = abs(((bearing_deg(c_lat, c_lon, t["lat"], t["lon"]) - axis + 180) % 360) - 180) < 90
+    return axis if toward else (axis + 180) % 360
+
+
+def _classify_target(t: dict, fixes: List[dict], axis: float, c_lat: float, c_lon: float) -> dict:
+    d, f = min(((haversine_km(t["lat"], t["lon"], x["lat"], x["lon"]), x) for x in fixes), key=lambda p: p[0], default=(None, None))
+    dark = d is None or d > DARK_RADIUS_KM
+    rec = {"id": new_id(), **t, "distance_to_spill_km": round(haversine_km(t["lat"], t["lon"], c_lat, c_lon), 2), "nearest_ais_km": round(d, 2) if d is not None else None,
+           "matched_mmsi": None if dark else f["mmsi"], "matched_name": None if dark else f.get("vessel_name"), "dark_candidate": dark}
+    if dark:
+        away = _escape_heading(axis, c_lat, c_lon, t)
+        rec.update({"escape_heading_deg": round(away, 0), "assumed_speed_kn": ASSUMED_SPEED_KN, "trajectory": _trajectory(t["lat"], t["lon"], away),
+                    "trajectory_note": "Dead reckoning along the slick's major axis away from the spill at an assumed 12 kn — a search cue, not a track."})
+    return rec
+
+
+async def _scene_with_imagery(case: dict) -> dict:
+    scene = await db.scenes.find_one({"id": case.get("scene_id")}, {"_id": 0}) if case.get("scene_id") else None
+    if not scene or not (scene.get("quicklook_path") or (scene.get("metadata") or {}).get("preview_href") or scene.get("stac_href")):
+        raise ValueError("no Sentinel-1 quicklook is attached to this case's scene — dark-vessel scan needs real SAR imagery")
+    return scene
+
+
+async def _ais_around(t0: datetime, c_lat: float, c_lon: float, radius_km: float) -> List[dict]:
+    q = {"timestamp": {"$gte": t0 - timedelta(minutes=TIME_WINDOW_MIN), "$lte": t0 + timedelta(minutes=TIME_WINDOW_MIN)},
+         "location": {"$geoWithin": {"$centerSphere": [[c_lon, c_lat], (radius_km + DARK_RADIUS_KM) / 6371.0088]}}}
+    return await db.ais_positions.find(q, {"_id": 0, "mmsi": 1, "vessel_name": 1, "lat": 1, "lon": 1, "timestamp": 1}).to_list(20000)
+
+
 async def scan_case(case_id: str, actor: str = "system", radius_km: float = 40.0) -> dict:
     case = await db.cases.find_one({"id": case_id}, {"_id": 0})
     if not case:
         raise ValueError("case not found")
-    scene = await db.scenes.find_one({"id": case.get("scene_id")}, {"_id": 0}) if case.get("scene_id") else None
-    if not scene or not (scene.get("quicklook_path") or (scene.get("metadata") or {}).get("preview_href") or scene.get("stac_href")):
-        raise ValueError("no Sentinel-1 quicklook is attached to this case's scene — dark-vessel scan needs real SAR imagery")
+    scene = await _scene_with_imagery(case)
     spill = await db.spill_observations.find_one({"id": case["spill_observation_id"]}, {"_id": 0})
     t0 = spill["acquisition_time"].replace(tzinfo=timezone.utc) if spill["acquisition_time"].tzinfo is None else spill["acquisition_time"]
-    poly = shape(spill["geometry"])
     c_lon, c_lat = spill["centroid"]["coordinates"]
     bbox = (scene.get("metadata") or {}).get("bbox") or list(shape(scene["footprint"]).bounds)
     det = detect_bright_targets(await get_quicklook(scene), bbox)
     near = [t for t in det["targets"] if haversine_km(t["lat"], t["lon"], c_lat, c_lon) <= radius_km]
-    q = {"timestamp": {"$gte": t0 - timedelta(minutes=TIME_WINDOW_MIN), "$lte": t0 + timedelta(minutes=TIME_WINDOW_MIN)},
-         "location": {"$geoWithin": {"$centerSphere": [[c_lon, c_lat], (radius_km + DARK_RADIUS_KM) / 6371.0088]}}}
-    fixes = await db.ais_positions.find(q, {"_id": 0, "mmsi": 1, "vessel_name": 1, "lat": 1, "lon": 1, "timestamp": 1}).to_list(20000)
-    axis = major_axis_bearing(poly)
-    out = []
-    for t in near:
-        best = min(((haversine_km(t["lat"], t["lon"], f["lat"], f["lon"]), f) for f in fixes), key=lambda x: x[0], default=(None, None))
-        d, f = best
-        dark = d is None or d > DARK_RADIUS_KM
-        rec = {"id": new_id(), **t, "distance_to_spill_km": round(haversine_km(t["lat"], t["lon"], c_lat, c_lon), 2), "nearest_ais_km": round(d, 2) if d is not None else None,
-               "matched_mmsi": None if dark else f["mmsi"], "matched_name": None if dark else f.get("vessel_name"), "dark_candidate": dark}
-        if dark:
-            away = axis if abs(((bearing_deg(c_lat, c_lon, t["lat"], t["lon"]) - axis + 180) % 360) - 180) < 90 else (axis + 180) % 360
-            rec.update({"escape_heading_deg": round(away, 0), "assumed_speed_kn": ASSUMED_SPEED_KN, "trajectory": _trajectory(t["lat"], t["lon"], away),
-                        "trajectory_note": "Dead reckoning along the slick's major axis away from the spill at an assumed 12 kn — a search cue, not a track."})
-        out.append(rec)
+    fixes = await _ais_around(t0, c_lat, c_lon, radius_km)
+    axis = major_axis_bearing(shape(spill["geometry"]))
+    out = [_classify_target(t, fixes, axis, c_lat, c_lon) for t in near]
     now = datetime.now(timezone.utc)
     scan = {"id": new_id(), "case_id": case_id, "scene_id": scene["id"], "version": DARK_VESSEL_VERSION, "acquisition_time": t0, "radius_km": radius_km, "dark_radius_km": DARK_RADIUS_KM,
             "time_window_min": TIME_WINDOW_MIN, "targets": out, "bright_targets_total": det["total"], "ais_fixes_checked": len(fixes), "dark_count": sum(1 for r in out if r["dark_candidate"]),

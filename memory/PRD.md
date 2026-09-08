@@ -112,6 +112,12 @@ POST/GET scenes, POST scenes/{id}/detect (mock), POST/GET spill-observations, PO
 - **Evidence Vault** `vault.py` + `GET /archive/{id}/vault`: structured legal/ecological evidence (ruling, penalties, cleanup cost, compensation, ecological impact, source links) for the 12 seeded spills; RECONSTRUCTED day-by-day footprint frames (√t spread then weathering). Page `/archive/:id` with mini-map replay slider/play, GIBS optical before/after toggle, evidence side panel.
 - **District alert recipients**: `icg_districts.recipients[]` via admin PUT; `recipients_for_alerts(icg_code)` puts district desk emails first; Zones admin edit form field. **Email delivery still NOT CONFIGURED** (no Resend key/sender supplied) — configure under Users → Email settings.
 
+## Implemented (iteration 15 — code-quality pass 3, pure refactor)
+- `report.build_pdf` → `_Doc` styles/table helper + `_sec_header/_sec_summary/_sec_observation/_sec_map/_sec_calculations/_sec_versions/_sec_reviews/_sec_audit/_sec_attachments/_sec_playbook/_sec_vulnerability`; `playbook.build_playbook` → `_situation/_tactical/_tier1/_tier2/_tier3`; `dark_vessel.scan_case` → `_scene_with_imagery/_ais_around/_classify_target/_escape_heading`.
+- Verified byte-identical with `scripts/refactor_baseline.py` (capture before / compare after): 60 playbooks + 6 PDF texts IDENTICAL; correlation golden 9/9.
+- `CaseMap.jsx` render split into `DarkVesselLayer`, `DriftLayers`, `VesselTracks`, `ClosestFixes`; static pathOptions hoisted in `EvidenceVault.jsx`/`Vulnerability.jsx`.
+- Report items re-confirmed as false positives: `tests/test_iteration3.py` secret (already env-based), `is` literal comparisons (all `is None`), `random` (deterministic seeded mock), lazy imports (own modules), hook deps (eslint react-hooks clean).
+
 ## Backlog (prioritized)
 - P1: Resend + aisstream keys; U-Net SAR segmentation; OpenDrift forward drift; socio-economic vulnerability (Overpass POIs); WhatsApp citizen reports; i18n (Hindi/Tamil/Marathi); outbound port-authority webhooks (HMAC); ErrorBoundary around CaseDetail; exponential lockout backoff.
 - P2: Additional met/ocean providers, replay testing harness, observability/metrics, SAR segmentation model once labeled data exists, separate worker process (Celery/Redis).

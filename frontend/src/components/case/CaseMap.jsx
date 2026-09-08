@@ -70,6 +70,97 @@ export const trackPositionAt = (feature, t) => {
   return { lat: coords[i][1] + (coords[i + 1][1] - coords[i][1]) * f, lon: coords[i][0] + (coords[i + 1][0] - coords[i][0]) * f, idx: i, gap: ts[i + 1] - ts[i] > 2 * 3600e3 };
 };
 
+const DarkVesselLayer = ({ targets }) => {
+  if (!targets?.length) return null;
+  const dark = targets.filter((t) => t.dark_candidate);
+  return (
+    <>
+      {targets.map((t) => (
+        <Rectangle key={`dv-${t.id}`} bounds={darkBounds(t)} pathOptions={t.dark_candidate ? DARK_BOX : AIS_BOX}>
+          <Tooltip sticky><span data-testid={`dark-box-tip-${t.id}`}>{t.dark_candidate ? `DARK VESSEL CANDIDATE D${dark.indexOf(t) + 1} — no AIS ≤ 3 km` : `SAR target matched to AIS ${t.matched_name || t.matched_mmsi}`} · SNR {t.snr}σ · ≈{t.est_length_m} m</span></Tooltip>
+        </Rectangle>
+      ))}
+      {dark.filter((t) => t.trajectory).map((t) => (
+        <Polyline key={`dvt-${t.id}`} positions={[[t.lat, t.lon], ...t.trajectory.map((p) => [p.lat, p.lon])]} pathOptions={DARK_TRAJ}><Tooltip sticky>Dead-reckoned escape cue · {t.escape_heading_deg}° @ {t.assumed_speed_kn} kn (1–6 h)</Tooltip></Polyline>
+      ))}
+    </>
+  );
+};
+
+const DriftLayers = ({ layers }) => (
+  <>
+    {layers.corridor.map((f, i) => <GeoJSON key={`c${i}`} data={f} style={CORRIDOR_STYLE} />)}
+    {layers.driftEnv.map((f, i) => (
+      <GeoJSON key={`de${i}`} data={f} style={DRIFT_ENV_STYLE}>
+        <Tooltip sticky><span data-testid="drift-envelope-tip">Origin envelope · 2σ · {f.properties.hours}h backward Lagrangian model</span></Tooltip>
+      </GeoJSON>
+    ))}
+    {layers.driftLikely.map((f, i) => (
+      <GeoJSON key={`dl${i}`} data={f} style={DRIFT_LIKELY_STYLE}>
+        <Tooltip sticky>Most-likely origin window: {f.properties.window_hours[0]}–{f.properties.window_hours[1]} h before acquisition</Tooltip>
+      </GeoJSON>
+    ))}
+    {layers.driftPath.map((f, i) => <Polyline key={`dp${i}`} positions={toLatLng(f.geometry.coordinates)} pathOptions={DRIFT_PATH_OPTS} />)}
+  </>
+);
+
+const VesselTracks = ({ tracks, selected, timeCursor, colorFor, selectHandler }) => (
+  <>
+    {tracks.map((f) => {
+      const p = f.properties;
+      const dim = selected && selected !== p.mmsi;
+      let coords = f.geometry.coordinates;
+      if (timeCursor != null) {
+        const head = trackPositionAt(f, timeCursor);
+        if (!head) return null;
+        coords = [...coords.slice(0, head.idx + 1), [head.lon, head.lat]];
+      }
+      return (
+        <Polyline key={`t${p.side || ""}${p.mmsi}-${p.segment ?? 0}`} positions={toLatLng(coords)} pathOptions={trackOpts(colorFor(p.rank, p.side), dim, p.interpolated)} eventHandlers={selectHandler(p.mmsi)}>
+          {p.interpolated && <Tooltip sticky><span data-testid="interpolated-tip">Interpolated (dead reckoning across AIS gap) — not a transmitted position</span></Tooltip>}
+        </Polyline>
+      );
+    })}
+    {timeCursor != null && tracks.map((f) => {
+      const p = f.properties;
+      const head = trackPositionAt(f, timeCursor);
+      if (!head) return null;
+      const dim = selected && selected !== p.mmsi;
+      return (
+        <CircleMarker key={`h${p.side || ""}${p.mmsi}`} center={[head.lat, head.lon]} radius={p.rank === 1 ? 9 : 7} pathOptions={headOpts(colorFor(p.rank, p.side), dim, head.gap || head.stale)} eventHandlers={selectHandler(p.mmsi)}>
+          <Popup><b>#{p.rank} {p.vessel_name || p.mmsi}</b><br />{fmtTime(new Date(timeCursor).toISOString())}{head.gap || head.stale ? <><br /><i>inside AIS gap — position interpolated</i></> : null}</Popup>
+        </CircleMarker>
+      );
+    })}
+  </>
+);
+
+const ClosestFixes = ({ fixes, bp, selected, colorFor, selectHandler }) => (
+  <>
+    {fixes.map((f) => {
+      const p = f.properties;
+      const [lon, lat] = f.geometry.coordinates;
+      return (
+        <CircleMarker key={`f${p.side || ""}${p.mmsi}`} center={[lat, lon]} radius={p.rank === 1 ? 8 : 6} pathOptions={fixOpts(colorFor(p.rank, p.side), selected === p.mmsi)} eventHandlers={selectHandler(p.mmsi)}>
+          <Popup>
+            <b>#{p.rank} {p.vessel_name || p.mmsi}</b><br />MMSI {p.mmsi} · score {p.score?.toFixed(3)} · {p.status}<br />
+            Closest approach {fmtTime(p.timestamp)}<br />{p.distance_km} km from slick · {p.time_gap_hours}h {p.time_gap_hours >= 0 ? "before" : "after"} acquisition<br />
+            SOG {p.sog_kn ?? "—"} kn · COG {p.cog_deg ?? "—"}°
+          </Popup>
+        </CircleMarker>
+      );
+    })}
+    {bp.map((f) => {
+      const [lon, lat] = f.geometry.coordinates;
+      return (
+        <CircleMarker key={`b${f.properties.side || ""}${f.properties.mmsi}`} center={[lat, lon]} radius={4} pathOptions={bpOpts(colorFor(f.properties.rank, f.properties.side), selected && selected !== f.properties.mmsi)}>
+          <Popup>Drift back-projection of slick centroid to closest approach of {f.properties.vessel_name || f.properties.mmsi}</Popup>
+        </CircleMarker>
+      );
+    })}
+  </>
+);
+
 export const CaseMap = ({ geojson, selected, onSelect, showTracks = true, showCorridor = true, timeCursor = null, acquisitionTime = null, zones = null, zoneKinds = null, sideColors = null, gibs = null, overlay = null, fitTo = null, highlight = null, asset = null, darkVessels = null }) => {
   const colorFor = useCallback((rank, side) => (sideColors && side ? sideColors[side] : rankColorFor(rank)), [sideColors]);
   const selectHandler = useCallback((mmsi) => ({ click: () => onSelect?.(mmsi) }), [onSelect]);
@@ -104,94 +195,18 @@ export const CaseMap = ({ geojson, selected, onSelect, showTracks = true, showCo
         </CircleMarker>
       )}
       <FitBounds geojson={geojson} />
-      {darkVessels?.map((t, i) => (
-        <Rectangle key={`dv-${t.id}`} bounds={darkBounds(t)} pathOptions={t.dark_candidate ? DARK_BOX : AIS_BOX}>
-          <Tooltip sticky><span data-testid={`dark-box-tip-${t.id}`}>{t.dark_candidate ? `DARK VESSEL CANDIDATE D${darkVessels.filter((x) => x.dark_candidate).indexOf(t) + 1} — no AIS ≤ 3 km` : `SAR target matched to AIS ${t.matched_name || t.matched_mmsi}`} · SNR {t.snr}σ · ≈{t.est_length_m} m</span></Tooltip>
-        </Rectangle>
-      ))}
-      {darkVessels?.filter((t) => t.dark_candidate && t.trajectory).map((t) => (
-        <Polyline key={`dvt-${t.id}`} positions={[[t.lat, t.lon], ...t.trajectory.map((p) => [p.lat, p.lon])]} pathOptions={DARK_TRAJ}><Tooltip sticky>Dead-reckoned escape cue · {t.escape_heading_deg}° @ {t.assumed_speed_kn} kn (1–6 h)</Tooltip></Polyline>
-      ))}
+      <DarkVesselLayer targets={darkVessels} />
       {zones?.features?.length > 0 && (
-        <GeoJSON key={`zones-${zones.features.length}-${zoneKinds ? Object.values(zoneKinds).join("") : ""}`} data={zones}
-          filter={zoneFilter} style={zoneStyle} onEachFeature={zoneTooltip} />
+        <GeoJSON key={`zones-${zones.features.length}-${zoneKinds ? Object.values(zoneKinds).join("") : ""}`} data={zones} filter={zoneFilter} style={zoneStyle} onEachFeature={zoneTooltip} />
       )}
-      {showCorridor && layers.corridor.map((f, i) => (
-        <GeoJSON key={`c${i}`} data={f} style={CORRIDOR_STYLE} />
-      ))}
-      {showCorridor && layers.driftEnv.map((f, i) => (
-        <GeoJSON key={`de${i}`} data={f} style={DRIFT_ENV_STYLE}>
-          <Tooltip sticky><span data-testid="drift-envelope-tip">Origin envelope · 2σ · {f.properties.hours}h backward Lagrangian model</span></Tooltip>
-        </GeoJSON>
-      ))}
-      {showCorridor && layers.driftLikely.map((f, i) => (
-        <GeoJSON key={`dl${i}`} data={f} style={DRIFT_LIKELY_STYLE}>
-          <Tooltip sticky>Most-likely origin window: {f.properties.window_hours[0]}–{f.properties.window_hours[1]} h before acquisition</Tooltip>
-        </GeoJSON>
-      ))}
-      {showCorridor && layers.driftPath.map((f, i) => (
-        <Polyline key={`dp${i}`} positions={toLatLng(f.geometry.coordinates)} pathOptions={DRIFT_PATH_OPTS} />
-      ))}
+      {showCorridor && <DriftLayers layers={layers} />}
       {layers.spill.map((f, i) => (
         <GeoJSON key={`s${i}-${f.properties.id}-${spillVisible}`} data={f} style={spillStyle(sideColors?.[f.properties.side] || "#FF2A6D", spillVisible)}>
           <Popup><b>Spill observation</b><br />Acquired {fmtTime(f.properties.acquisition_time)}<br />Confidence {Math.round(f.properties.detection_confidence * 100)}% · {f.properties.estimated_area_km2} km²<br />{f.properties.quality_flags?.join(", ") || "no quality flags"}</Popup>
         </GeoJSON>
       ))}
-      {showTracks && layers.tracks.map((f) => {
-        const p = f.properties;
-        const dim = selected && selected !== p.mmsi;
-        let coords = f.geometry.coordinates;
-        let head = null;
-        if (timeCursor != null) {
-          head = trackPositionAt(f, timeCursor);
-          if (!head) return null;
-          coords = [...coords.slice(0, head.idx + 1), [head.lon, head.lat]];
-        }
-        return (
-          <Polyline key={`t${p.side || ""}${p.mmsi}-${p.segment ?? 0}`} positions={toLatLng(coords)}
-            pathOptions={trackOpts(colorFor(p.rank, p.side), dim, p.interpolated)}
-            eventHandlers={selectHandler(p.mmsi)}>
-            {p.interpolated && <Tooltip sticky><span data-testid="interpolated-tip">Interpolated (dead reckoning across AIS gap) — not a transmitted position</span></Tooltip>}
-          </Polyline>
-        );
-      })}
-      {showTracks && timeCursor != null && layers.tracks.map((f) => {
-        const p = f.properties;
-        const head = trackPositionAt(f, timeCursor);
-        if (!head) return null;
-        const dim = selected && selected !== p.mmsi;
-        return (
-          <CircleMarker key={`h${p.side || ""}${p.mmsi}`} center={[head.lat, head.lon]} radius={p.rank === 1 ? 9 : 7}
-            pathOptions={headOpts(colorFor(p.rank, p.side), dim, head.gap || head.stale)}
-            eventHandlers={selectHandler(p.mmsi)}>
-            <Popup><b>#{p.rank} {p.vessel_name || p.mmsi}</b><br />{fmtTime(new Date(timeCursor).toISOString())}{head.gap || head.stale ? <><br /><i>inside AIS gap — position interpolated</i></> : null}</Popup>
-          </CircleMarker>
-        );
-      })}
-      {timeCursor == null && layers.fixes.map((f) => {
-        const p = f.properties;
-        const [lon, lat] = f.geometry.coordinates;
-        return (
-          <CircleMarker key={`f${p.side || ""}${p.mmsi}`} center={[lat, lon]} radius={p.rank === 1 ? 8 : 6}
-            pathOptions={fixOpts(colorFor(p.rank, p.side), selected === p.mmsi)}
-            eventHandlers={selectHandler(p.mmsi)}>
-            <Popup>
-              <b>#{p.rank} {p.vessel_name || p.mmsi}</b><br />MMSI {p.mmsi} · score {p.score?.toFixed(3)} · {p.status}<br />
-              Closest approach {fmtTime(p.timestamp)}<br />{p.distance_km} km from slick · {p.time_gap_hours}h {p.time_gap_hours >= 0 ? "before" : "after"} acquisition<br />
-              SOG {p.sog_kn ?? "—"} kn · COG {p.cog_deg ?? "—"}°
-            </Popup>
-          </CircleMarker>
-        );
-      })}
-      {timeCursor == null && layers.bp.map((f) => {
-        const [lon, lat] = f.geometry.coordinates;
-        return (
-          <CircleMarker key={`b${f.properties.side || ""}${f.properties.mmsi}`} center={[lat, lon]} radius={4}
-            pathOptions={bpOpts(colorFor(f.properties.rank, f.properties.side), selected && selected !== f.properties.mmsi)}>
-            <Popup>Drift back-projection of slick centroid to closest approach of {f.properties.vessel_name || f.properties.mmsi}</Popup>
-          </CircleMarker>
-        );
-      })}
+      {showTracks && <VesselTracks tracks={layers.tracks} selected={selected} timeCursor={timeCursor} colorFor={colorFor} selectHandler={selectHandler} />}
+      {timeCursor == null && <ClosestFixes fixes={layers.fixes} bp={layers.bp} selected={selected} colorFor={colorFor} selectHandler={selectHandler} />}
     </MapContainer>
     </div>
   );
