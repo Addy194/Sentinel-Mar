@@ -266,6 +266,11 @@ async def case_evidence_pdf(case_id: str, version: Optional[int] = None, user=De
             except Exception as e:  # noqa: BLE001
                 images.append({"caption": att.get("caption") or att["original_filename"], "meta": f"fetch failed: {str(e)[:80]}", "bytes": None})
     bundle["attachment_images"] = images
+    try:
+        from playbook import playbook_for_case
+        bundle["playbook"] = await playbook_for_case(case_id)
+    except Exception:  # noqa: BLE001
+        bundle["playbook"] = None
     pdf = build_pdf(bundle)
     await audit("case", case_id, "evidence.exported", {"format": "pdf", "version": bundle["case"].get("latest_result_version"), "bytes": len(pdf)}, user["email"])
     return Response(content=pdf, media_type="application/pdf",

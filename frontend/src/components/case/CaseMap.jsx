@@ -37,7 +37,7 @@ export const trackPositionAt = (feature, t) => {
   return { lat: coords[i][1] + (coords[i + 1][1] - coords[i][1]) * f, lon: coords[i][0] + (coords[i + 1][0] - coords[i][0]) * f, idx: i, gap: ts[i + 1] - ts[i] > 2 * 3600e3 };
 };
 
-export const CaseMap = ({ geojson, selected, onSelect, showTracks = true, showCorridor = true, timeCursor = null, acquisitionTime = null, zones = null, sideColors = null, gibs = null, overlay = null, fitTo = null, highlight = null }) => {
+export const CaseMap = ({ geojson, selected, onSelect, showTracks = true, showCorridor = true, timeCursor = null, acquisitionTime = null, zones = null, sideColors = null, gibs = null, overlay = null, fitTo = null, highlight = null, asset = null }) => {
   const colorFor = (rank, side) => (sideColors && side ? sideColors[side] : RANK_COLORS[Math.min((rank || 1) - 1, RANK_COLORS.length - 1)]);
   const layers = useMemo(() => {
     const f = geojson?.features || [];
@@ -62,6 +62,7 @@ export const CaseMap = ({ geojson, selected, onSelect, showTracks = true, showCo
       {gibs && acquisitionTime && <GibsLayer layer={gibs.layer} date={acquisitionTime.slice(0, 10)} template={gibs.template} />}
       {overlay?.url && overlay.bounds && <ImageOverlay url={overlay.url} bounds={overlay.bounds} opacity={overlay.opacity ?? 0.8} zIndex={5} />}
       <FitTo bounds={fitTo} />
+      {asset?.geometry && <GeoJSON key={`asset-${asset.id}`} data={asset.geometry} style={{ color: "#FFB703", weight: 2, dashArray: "8,4", fillColor: "#FFB703", fillOpacity: 0.06 }}><Tooltip permanent direction="top"><span data-testid="asset-footprint-label">{asset.name} · {asset.type}</span></Tooltip></GeoJSON>}
       {highlight && (
         <CircleMarker center={[highlight.lat, highlight.lon]} radius={14} pathOptions={{ color: highlight.confirmed ? "#FF2A6D" : "#FFB703", weight: 3, fillOpacity: 0.15, dashArray: highlight.confirmed ? null : "4,4" }}>
           <Tooltip permanent direction="top" offset={[0, -14]} className="focus-tip"><span data-testid="focus-vessel-label">{highlight.confirmed ? "RESPONSIBLE (analyst confirmed)" : "TOP CANDIDATE — not confirmed"} · {highlight.name}</span></Tooltip>

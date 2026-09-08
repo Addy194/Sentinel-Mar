@@ -2,8 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import bbox from "@turf/bbox";
-import { ArrowLeft, Download, Layers, FileText, Columns2, Globe2, Crosshair, Image as ImageIcon } from "lucide-react";
-import { api, apiError, fmtTime, pct } from "@/lib/api";
+import { ArrowLeft, Download, Layers, FileText, Columns2, Globe2, Crosshair, Image as ImageIcon, Gavel } from "lucide-react";
+import { api, apiError, fmtTime, pct, hasRole } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
 import { StatusBadge, BandBadge } from "@/components/StatusBadge";
 import { CaseMap } from "@/components/case/CaseMap";
 import { CandidatesTable } from "@/components/case/CandidatesTable";
@@ -15,13 +16,17 @@ import { CaseTimeline } from "@/components/case/CaseTimeline";
 import { Attachments } from "@/components/case/Attachments";
 import { BeforeAfter } from "@/components/case/BeforeAfter";
 import { DetectorFeedback } from "@/components/case/DetectorFeedback";
+import { Playbook } from "@/components/case/Playbook";
+import { Precedents } from "@/components/case/Precedents";
+import { AssetSearch, assetBounds } from "@/components/map/AssetSearch";
 import { useLive } from "@/context/LiveFeed";
 
-const TABS = [["candidates", "Candidates"], ["review", "Analyst review"], ["timeline", "Timeline"], ["files", "Files"], ["beforeafter", "Before / After"], ["evidence", "Evidence & audit"], ["log", "Processing log"]];
+const TABS = [["candidates", "Candidates"], ["review", "Analyst review"], ["response", "Response"], ["timeline", "Timeline"], ["files", "Files"], ["beforeafter", "Before / After"], ["evidence", "Evidence & audit"], ["log", "Processing log"]];
 const overlayBtn = { background: "rgba(10,14,23,0.85)", border: "1px solid var(--border-highlight)", backdropFilter: "blur(12px)" };
 
 export default function CaseDetail() {
   const { id } = useParams();
+  const { user } = useAuth();
   const [c, setC] = useState(null);
   const [cands, setCands] = useState(null);
   const [geo, setGeo] = useState(null);
@@ -42,6 +47,18 @@ export default function CaseDetail() {
   const [overlayOpacity, setOverlayOpacity] = useState(0.8);
   const [fitTo, setFitTo] = useState(null);
   const [focus, setFocus] = useState(false);
+  const [asset, setAsset] = useState(null);
+  const [exporting, setExporting] = useState(false);
+  const prosecutionExport = async () => {
+    setExporting(true);
+    try {
+      const r = await api.post(`/cases/${id}/prosecution-export`, null, { responseType: "blob", timeout: 180000 });
+      const h = r.headers["x-bundle-sha256"];
+      const el = document.createElement("a"); el.href = URL.createObjectURL(r.data); el.download = `${c.case_number}_prosecution.zip`; el.click(); URL.revokeObjectURL(el.href);
+      toast.success("Prosecution bundle exported", { description: `SHA-256 ${h?.slice(0, 20)}… recorded in audit ledger · verify at /verify`, duration: 12000 });
+      load();
+    } catch (e) { toast.error(apiError(e)); } finally { setExporting(false); }
+  };
 
   const load = useCallback(async () => {
     const [a, b, g, e, cfg, z] = await Promise.all([api.get(`/cases/${id}`), api.get(`/cases/${id}/candidates`), api.get(`/cases/${id}/geojson`), api.get(`/cases/${id}/evidence`), api.get("/config/defaults"), api.get("/jurisdictions/geojson")]);
@@ -96,7 +113,7 @@ export default function CaseDetail() {
     <div className="flex h-full overflow-hidden" data-testid="case-detail">
       <div className="relative flex-1">
         <CaseMap geojson={geo} selected={selected} onSelect={setSelected} showTracks={showTracks} timeCursor={cursor} acquisitionTime={c.acquisition_time} zones={showZones ? zones : null} gibs={showSat && satMeta ? { layer: satMeta.basemaps[0], template: satMeta.gibs_template } : null}
-          overlay={showOverlay && overlayUrl && overlayMeta ? { url: overlayUrl, bounds: overlayMeta.bounds, opacity: overlayOpacity } : null} fitTo={fitTo} highlight={highlight} />
+          overlay={showOverlay && overlayUrl && overlayMeta ? { url: overlayUrl, bounds: overlayMeta.bounds, opacity: overlayOpacity } : null} fitTo={fitTo} highlight={highlight} asset={asset} />
         <div className="absolute left-3 top-3 z-[1000] flex items-center gap-2">
           <Link to="/" data-testid="back-to-dashboard" className="inline-flex items-center gap-1 rounded px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-wider text-slate-200" style={overlayBtn}><ArrowLeft size={12} /> Cases</Link>
           <button data-testid="map-toggle-ais-layer" onClick={() => setShowTracks(!showTracks)} className="inline-flex items-center gap-1 rounded px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-wider" style={{ ...overlayBtn, color: showTracks ? "#00F0FF" : "#94A3B8" }}><Layers size={12} /> AIS tracks</button>
@@ -106,6 +123,8 @@ export default function CaseDetail() {
           <button data-testid="btn-export-pdf" disabled={pdfBusy} onClick={exportPdf} className="inline-flex items-center gap-1 rounded px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-wider disabled:opacity-50" style={{ ...overlayBtn, color: "#FFB703" }}><FileText size={12} /> {pdfBusy ? "Building…" : "Evidence PDF"}</button>
           <Link to={`/compare?a=${id}`} data-testid="btn-compare-case" className="inline-flex items-center gap-1 rounded px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-wider text-slate-200" style={overlayBtn}><Columns2 size={12} /> Compare</Link>
           <button data-testid="btn-focus-spill" onClick={focusSpill} className="inline-flex items-center gap-1 rounded px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-wider" style={{ ...overlayBtn, color: focus ? "#FFB703" : "#F8FAFC" }}><Crosshair size={12} /> Focus spill</button>
+          {hasRole(user, "supervisor") && <button data-testid="btn-prosecution-export" disabled={exporting} onClick={prosecutionExport} className="inline-flex items-center gap-1 rounded px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-wider text-rose-200 disabled:opacity-50" style={{ ...overlayBtn, borderColor: "rgba(255,42,109,0.6)" }}><Gavel size={12} /> {exporting ? "Bundling…" : "Prosecution export"}</button>}
+          <AssetSearch compact onSelect={(h) => { setFitTo(assetBounds(h)); setAsset(h); }} />
           {overlayMeta?.has_quicklook && (
             <span className="inline-flex items-center gap-2 rounded px-2.5 py-1.5" style={overlayBtn} data-testid="scene-overlay-control">
               <button data-testid="map-toggle-scene-overlay" onClick={() => setShowOverlay(!showOverlay)} className="inline-flex items-center gap-1 font-mono text-[11px] uppercase tracking-wider" style={{ color: showOverlay ? "#00F0FF" : "#94A3B8" }}><ImageIcon size={12} /> SAR quicklook</button>
@@ -167,6 +186,7 @@ export default function CaseDetail() {
           {tab === "review" && <div className="space-y-4"><DetectorFeedback caseId={id} source={c.source} onSaved={load} /><ReviewForm caseId={id} candidates={cands?.candidates} reasonCodes={config?.reason_codes} resultVersion={cands?.version} onSaved={load} /></div>}
           {tab === "timeline" && <CaseTimeline caseId={id} caseNumber={c.case_number} />}
           {tab === "files" && <Attachments caseId={id} onChanged={load} />}
+          {tab === "response" && <div className="space-y-4"><Playbook caseId={id} /><div className="px-4 pb-4"><Precedents caseId={id} /></div></div>}
           {tab === "beforeafter" && <div className="h-[520px]"><BeforeAfter caseId={id} /></div>}
           {tab === "evidence" && <EvidenceTimeline evidence={evidence} />}
           {tab === "log" && (

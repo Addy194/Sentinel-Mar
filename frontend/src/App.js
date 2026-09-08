@@ -16,6 +16,8 @@ import Watchlist from "@/pages/Watchlist";
 import Compare from "@/pages/Compare";
 import SceneExplorer from "@/pages/SceneExplorer";
 import Events from "@/pages/Events";
+import Archive from "@/pages/Archive";
+import Verify from "@/pages/Verify";
 import { LiveFeedProvider } from "@/context/LiveFeed";
 import { InactivityGuard } from "@/components/InactivityGuard";
 import { ForgotPassword, ResetPassword } from "@/pages/PasswordReset";
@@ -40,6 +42,7 @@ function App() {
             <Route path="/login" element={<Login />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/verify" element={<Verify />} />
             <Route element={<Protected><Layout /></Protected>}>
               <Route path="/" element={<Dashboard />} />
               <Route path="/cases/:id" element={<CaseDetail />} />
@@ -49,6 +52,7 @@ function App() {
               <Route path="/compare" element={<Compare />} />
               <Route path="/explorer" element={<SceneExplorer />} />
               <Route path="/events" element={<Events />} />
+              <Route path="/archive" element={<Archive />} />
               <Route path="/ingest" element={<Ingest />} />
               <Route path="/jobs" element={<Jobs />} />
               <Route path="/users" element={<Protected role="admin"><Users /></Protected>} />

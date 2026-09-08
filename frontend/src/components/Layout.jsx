@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { Radar, LayoutDashboard, Satellite, Activity, ShieldAlert, Users as UsersIcon, LogOut, Map as MapIcon, Eye, Columns2, Globe2, Images } from "lucide-react";
+import { Radar, LayoutDashboard, Satellite, Activity, ShieldAlert, Users as UsersIcon, LogOut, Map as MapIcon, Eye, Columns2, Globe2, Images, BookOpen } from "lucide-react";
 import { api, hasRole } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { LiveBell, CriticalBanner } from "@/components/LiveBell";
@@ -10,6 +10,7 @@ const links = [
   { to: "/ingest", label: "Ingestion", icon: Satellite, id: "nav-ingest-link" },
   { to: "/explorer", label: "Scene Explorer", icon: Globe2, id: "nav-explorer-link" },
   { to: "/events", label: "Events", icon: Images, id: "nav-events-link" },
+  { to: "/archive", label: "Archive", icon: BookOpen, id: "nav-archive-link" },
   { to: "/jobs", label: "Jobs & Alerts", icon: Activity, id: "nav-jobs-link" },
   { to: "/zones", label: "Zones", icon: MapIcon, id: "nav-zones-link" },
   { to: "/watchlist", label: "Watchlist", icon: Eye, id: "nav-watchlist-link" },

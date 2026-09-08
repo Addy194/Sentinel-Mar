@@ -30,6 +30,7 @@ flake8==7.3.0
 fonttools==4.64.0
 frozenlist==1.8.0
 fsspec==2026.7.0
+global-land-mask==1.0.0
 google-ai-generativelanguage==0.6.15
 google-api-core==2.33.0
 google-api-python-client==2.200.0
@@ -102,6 +103,7 @@ python-jose==3.5.0
 python-multipart==0.0.32
 pytokens==0.4.1
 PyYAML==6.0.3
+RapidFuzz==3.14.6
 referencing==0.37.0
 regex==2026.9.3
 reportlab==5.0.1

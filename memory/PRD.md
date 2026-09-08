@@ -71,8 +71,15 @@ POST/GET scenes, POST scenes/{id}/detect (mock), POST/GET spill-observations, PO
 - **Drift back-model** `drift.py` (lagrangian-backtrack-0.1.0): hourly reverse steps ≤72 h (3% wind + current), σ(t) from eddy diffusivity + 35% velocity uncertainty, 2σ origin envelope + most-likely window (from spill age); drift factor = exp(−z²/2) against envelope; layers `drift_envelope`/`drift_likely`/`drift_path` on map; PDF explains. Algorithm version **corr-1.1.0**.
 - Tested: iteration_8 — 15/15 backend, all frontend flows pass.
 
+## Implemented (iteration 9)
+- **Petroleum asset search**: seeded gazetteer (~70: Indian basins/fields/ports, global fields, terminals, lanes, countries) + live EEZ zones; rapidfuzz search w/ name-substring boost (`GET /gazetteer/search`), admin CRUD; `AssetSearch` fly-to + footprint on Explorer and case map.
+- **Historical spill archive**: 12 seeded precedents (`historical_spills`), `/archive` page (URL search), supervisor add/delete; `GET /cases/{id}/precedents` similarity (0.5 distance + 0.3 log-volume + 0.2 oil type) → Precedents drawer on Response tab.
+- **Remediation playbook** (`playbook.py`, ADVISORY): volume by thickness class, coast distance via global-land-mask, depth class, sea state, drift → tactical boom/skimmer coords at down-drift edge; Tier 1/2/3 with dispersant/ISB/bioremediation suitability rules; Response tab + PDF section 9.
+- **Prosecution export**: supervisor+ ZIP (PDF, case/spill/scene/AIS/results/reviews/audit/feedback/playbook JSON, attachments, MANIFEST.json SHA-256 + content hash), ledger `prosecution_exports`, audit; public `GET /verify/{hash}`, `POST /verify` (re-hash every file, detect tampering/repackaging), `/verify` page.
+- Tested: iteration_9 — 28/29 backend (fuzzy ranking fixed after), all UI flows pass (testing agent fixed missing hasRole import in CaseDetail).
+
 ## Backlog (prioritized)
-- P1: Resend + aisstream keys; U-Net SAR segmentation; OpenDrift/HYCOM forward+backward; AIS anomaly ML (Isolation Forest); historical spill archive & remediation playbook; petroleum-asset/country search; exponential lockout backoff; field incident reporter (geolocation + EXIF); prosecution export w/ hash.
+- P1: Resend + aisstream keys; U-Net SAR segmentation; OpenDrift forward drift; socio-economic vulnerability (Overpass POIs); WhatsApp citizen reports; i18n (Hindi/Tamil/Marathi); outbound port-authority webhooks (HMAC); ErrorBoundary around CaseDetail; exponential lockout backoff.
 - P2: Additional met/ocean providers, replay testing harness, observability/metrics, SAR segmentation model once labeled data exists, separate worker process (Celery/Redis).
 
 ## Known limitations

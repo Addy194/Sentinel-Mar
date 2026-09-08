@@ -214,5 +214,24 @@ def build_pdf(bundle: dict) -> bytes:
                 el.append(KeepTogether([Image(io.BytesIO(img["bytes"]), width=h / ratio, height=h), Paragraph(f"<b>{img['caption']}</b> · {img['meta']}", small)]))
             except Exception as e:  # noqa: BLE001
                 el.append(Paragraph(f"{img['caption']} — image could not be rendered: {e}", small))
+    if bundle.get("playbook"):
+        pb = bundle["playbook"]
+        el.append(Paragraph("9. Remediation playbook — ADVISORY", h2))
+        el.append(Paragraph(pb["disclaimer"], small))
+        inp = pb["inputs"]
+        el.append(table([["Area km²", inp["area_km2"], "Volume est. (thin/thick) t", f"{inp['estimated_volume_tonnes']['thin']} / {inp['estimated_volume_tonnes']['thick']}"],
+                         ["Coast distance km", f"{inp['coast_distance_km']} ({inp['coast_note']})", "Depth class", inp["depth_class"]],
+                         ["Wind / sea state", f"{inp['wind_ms']} m/s · {inp['sea_state']}", "Drift", f"{inp['drift_speed_ms']} m/s → {inp['drift_bearing_deg']}° · ETA coast {inp['eta_to_coast_hours']} h"]], [W * 0.18, W * 0.32, W * 0.2, W * 0.3], header=False))
+        for t in pb["tiers"]:
+            el.append(Paragraph(f"Tier {t['tier']} — {t['title']} ({t['priority']})", ParagraphStyle("h4b", parent=body, fontName="Helvetica-Bold", spaceBefore=4)))
+            for a in t.get("actions", []):
+                el.append(Paragraph("• " + a, small))
+            for k in ("dispersant", "in_situ_burning", "bioremediation"):
+                if k in t:
+                    el.append(Paragraph(f"• {k.replace('_', ' ')}: {'SUITABLE' if t[k]['suitable'] else 'NOT SUITABLE'} — {t[k]['reason']}", small))
+            for s in t.get("schedule", []):
+                el.append(Paragraph(f"• {s['when'][:16]}Z — {s['task']}", small))
+        if pb["tactical_coordinates"]:
+            el.append(table([["ID", "Lat", "Lon", "Role"]] + [[c["id"], c["lat"], c["lon"], c["role"]] for c in pb["tactical_coordinates"]], [W * 0.12, W * 0.14, W * 0.14, W * 0.6]))
     doc.build(el)
     return buf.getvalue()

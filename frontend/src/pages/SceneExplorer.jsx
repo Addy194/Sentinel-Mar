@@ -7,6 +7,7 @@ import { api, apiError, fmtTime } from "@/lib/api";
 import { GibsLayer } from "@/components/map/GibsLayer";
 import { DensityLayer } from "@/components/map/DensityLayer";
 import { SceneWatches } from "@/components/explorer/SceneWatches";
+import { AssetSearch, assetBounds } from "@/components/map/AssetSearch";
 import { TILE_PERF, OSM_URL } from "@/components/map/tiles";
 
 const inputCls = "w-full rounded border bg-slate-900/60 px-2.5 py-1.5 font-mono text-xs text-slate-100 outline-none focus:border-cyan-400/60";
@@ -56,6 +57,7 @@ export default function SceneExplorer() {
   const [density, setDensity] = useState(null);
   const [densityHours, setDensityHours] = useState(0);
   const [zoom, setZoom] = useState(3);
+  const [asset, setAsset] = useState(null);
 
   useEffect(() => {
     if (!densityHours) { setDensity(null); return undefined; }
@@ -92,12 +94,14 @@ export default function SceneExplorer() {
           <TileLayer url={OSM_URL} attribution="&copy; OpenStreetMap contributors" className="dark-tiles" {...TILE_PERF} />
           {basemap && meta && <GibsLayer layer={meta.basemaps.find((b) => b.id === basemap)} date={gibsDate} template={meta.gibs_template} />}
           {density && <DensityLayer cells={density.cells} />}
+          {asset?.geometry && <GeoJSON key={`asset-${asset.id}`} data={asset.geometry} style={{ color: "#FFB703", weight: 2, dashArray: "8,4", fillColor: "#FFB703", fillOpacity: 0.06 }} onEachFeature={(ft, l) => l.bindTooltip(`${asset.name} · ${asset.type}`, { permanent: true, direction: "top" })} />}
           <ViewTracker onView={setView} onZoom={setZoom} /><FlyTo bbox={flyTo} />
           {footprints && <GeoJSON key={res.scenes.map((s) => s.stac_id).join("|") + hover} data={footprints}
             style={(ft) => ({ color: ft.properties.id === hover ? "#FFB703" : "#00F0FF", weight: ft.properties.id === hover ? 2.5 : 1, fillOpacity: ft.properties.id === hover ? 0.2 : 0.05 })}
             onEachFeature={(ft, layer) => layer.bindTooltip(ft.properties.id, { sticky: true })} />}
         </MapContainer>
         <div className="absolute left-3 top-3 z-[1000] flex flex-wrap items-center gap-2">
+          <AssetSearch compact onSelect={(h) => { setFlyTo(h.bbox); setAsset(h); }} />
           {PRESETS.map(([l, b]) => <button key={l} data-testid={`preset-${l.replace(/[^a-z]/gi, "").toLowerCase()}`} onClick={() => setFlyTo(b)} className="rounded px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider text-slate-200" style={{ background: "rgba(10,14,23,0.85)", border: "1px solid var(--border-highlight)", backdropFilter: "blur(12px)" }}><MapPin size={10} className="mr-1 inline" />{l}</button>)}
         </div>
         <div className="absolute bottom-3 left-3 z-[1000] flex gap-2">
