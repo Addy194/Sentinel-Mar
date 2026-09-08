@@ -2,30 +2,32 @@ import asyncio
 import logging
 import traceback
 from datetime import datetime, timezone
+from typing import Any, Awaitable, Callable, Dict, Optional
 
 from db import db
 from events import publish
 from models import new_id
 
 logger = logging.getLogger("jobs")
-HANDLERS = {}
+Handler = Callable[[dict], Awaitable[Any]]
+HANDLERS: Dict[str, Handler] = {}
 MAX_ATTEMPTS = 3
-_queue: asyncio.Queue = None
+_queue: Optional[asyncio.Queue] = None
 
 
-def handler(job_type):
-    def deco(fn):
+def handler(job_type: str) -> Callable[[Handler], Handler]:
+    def deco(fn: Handler) -> Handler:
         HANDLERS[job_type] = fn
         return fn
     return deco
 
 
-async def job_log(job_id, msg, level="info"):
+async def job_log(job_id: str, msg: str, level: str = "info") -> None:
     await db.jobs.update_one({"id": job_id}, {"$push": {"logs": {"t": datetime.now(timezone.utc).isoformat(), "level": level, "msg": msg}},
                                               "$set": {"updated_at": datetime.now(timezone.utc)}})
 
 
-async def enqueue(job_type, payload, actor="system", inline=False):
+async def enqueue(job_type: str, payload: dict, actor: str = "system", inline: bool = False) -> dict:
     now = datetime.now(timezone.utc)
     job = {"id": new_id(), "type": job_type, "status": "queued", "payload": payload, "result": None, "error": None,
            "attempts": 0, "logs": [{"t": now.isoformat(), "level": "info", "msg": f"queued {job_type}"}],
@@ -37,7 +39,7 @@ async def enqueue(job_type, payload, actor="system", inline=False):
     return job
 
 
-async def process(job_id):
+async def process(job_id: str) -> Optional[dict]:
     job = await db.jobs.find_one({"id": job_id}, {"_id": 0})
     if not job or job["status"] in ("succeeded",):
         return job
@@ -63,7 +65,7 @@ async def process(job_id):
     return await db.jobs.find_one({"id": job_id}, {"_id": 0})
 
 
-async def worker():
+async def worker() -> None:
     while True:
         job_id = await _queue.get()
         try:
@@ -74,7 +76,7 @@ async def worker():
             _queue.task_done()
 
 
-def start():
+def start() -> None:
     global _queue
     _queue = asyncio.Queue()
     asyncio.create_task(worker())

@@ -65,6 +65,45 @@ async def fetch_eez(iso3: str, layer: str = "eez") -> dict | None:
             "features": len(feats), "vertices": vertices}
 
 
+def _zone_doc(iso, L, rec, now):
+    return {"code": f"{iso}-{L['suffix']}", "name": rec["geoname"] or f"{iso} {L['label']}", "authority": AUTHORITIES.get(iso, f"{rec['sovereign'] or iso} maritime authority"),
+            "country": iso, "zone_type": L["zone_type"], "zone_label": L["label"], "geometry": rec["geometry"], "active": True,
+            "source": f"Marine Regions Maritime Boundaries v12 — {L['label']}, geo.vliz.be WFS, simplified 0.004°", "official": True,
+            "mrgid": rec["mrgid"], "pol_type": rec["pol_type"], "area_km2": rec["area_km2"], "imported_at": now, "updated_at": now}
+
+
+async def _fetch_or_fail(job_id, iso, layer, failed):
+    L = LAYERS[layer]
+    await job_log(job_id, f"fetching Marine Regions {L['label']} for {iso} …")
+    try:
+        rec = await fetch_eez(iso, layer)
+    except Exception as e:  # noqa: BLE001
+        failed.append({"iso3": iso, "layer": layer, "error": str(e)[:200]})
+        await job_log(job_id, f"{iso}/{layer}: fetch failed — {e}", "error")
+        return None
+    if not rec:
+        failed.append({"iso3": iso, "layer": layer, "error": "no feature returned"})
+        await job_log(job_id, f"{iso}/{layer}: no feature", "warn")
+    return rec
+
+
+async def _store_zone(job_id, iso, existing, doc, rec, now, failed):
+    """Upsert; on 2dsphere rejection retry once with repaired orientation. Returns zone id or None."""
+    try:
+        await _upsert_zone(existing, doc["code"], doc, now)
+    except Exception:  # noqa: BLE001
+        await job_log(job_id, f"{iso}: geometry rejected by geospatial index, retrying with repaired orientation", "warn")
+        try:
+            g = orient(make_valid(shape(rec["geometry"]).buffer(0)), sign=1.0)
+            doc["geometry"] = mapping(g if g.geom_type == "MultiPolygon" else MultiPolygon([g]))
+            await _upsert_zone(existing, doc["code"], doc, now)
+        except Exception as e2:  # noqa: BLE001
+            failed.append({"iso3": iso, "error": f"geometry not indexable: {str(e2)[:120]}"})
+            await job_log(job_id, f"{iso}: skipped — {str(e2)[:100]}", "error")
+            return None
+    return (existing or await db.jurisdictions.find_one({"code": doc["code"]}))["id"]
+
+
 @handler("import_eez")
 async def handle_import_eez(job):
     iso_list = [s.strip().upper() for s in job["payload"].get("iso3", DEFAULT_ISO3) if s.strip()]
@@ -75,38 +114,16 @@ async def handle_import_eez(job):
     imported, failed = [], []
     for iso, layer in [(i, l) for i in iso_list for l in layers]:
         L = LAYERS[layer]
-        await job_log(job["id"], f"fetching Marine Regions {L['label']} for {iso} …")
-        try:
-            rec = await fetch_eez(iso, layer)
-        except Exception as e:  # noqa: BLE001
-            failed.append({"iso3": iso, "layer": layer, "error": str(e)[:200]})
-            await job_log(job["id"], f"{iso}/{layer}: fetch failed — {e}", "error")
-            continue
+        rec = await _fetch_or_fail(job["id"], iso, layer, failed)
         if not rec:
-            failed.append({"iso3": iso, "layer": layer, "error": "no feature returned"})
-            await job_log(job["id"], f"{iso}/{layer}: no feature", "warn")
             continue
-        code = f"{iso}-{L['suffix']}"
-        doc = {"code": code, "name": rec["geoname"] or f"{iso} {L['label']}", "authority": AUTHORITIES.get(iso, f"{rec['sovereign'] or iso} maritime authority"),
-               "country": iso, "zone_type": L["zone_type"], "zone_label": L["label"], "geometry": rec["geometry"], "active": True,
-               "source": f"Marine Regions Maritime Boundaries v12 — {L['label']}, geo.vliz.be WFS, simplified 0.004°", "official": True,
-               "mrgid": rec["mrgid"], "pol_type": rec["pol_type"], "area_km2": rec["area_km2"], "imported_at": now, "updated_at": now}
-        existing = await db.jurisdictions.find_one({"code": code})
-        try:
-            await _upsert_zone(existing, code, doc, now)
-        except Exception as e:  # noqa: BLE001
-            await job_log(job["id"], f"{iso}: geometry rejected by geospatial index, retrying with repaired orientation", "warn")
-            try:
-                g = orient(make_valid(shape(rec["geometry"]).buffer(0)), sign=1.0)
-                doc["geometry"] = mapping(g if g.geom_type == "MultiPolygon" else MultiPolygon([g]))
-                await _upsert_zone(existing, code, doc, now)
-            except Exception as e2:  # noqa: BLE001
-                failed.append({"iso3": iso, "error": f"geometry not indexable: {str(e2)[:120]}"})
-                await job_log(job["id"], f"{iso}: skipped — {str(e2)[:100]}", "error")
-                continue
-        zid = (existing or await db.jurisdictions.find_one({"code": code}))["id"]
-        await audit("jurisdiction", zid, "jurisdiction.imported", {"code": code, "mrgid": rec["mrgid"], "vertices": rec["vertices"]}, actor)
-        imported.append({"iso3": iso, "layer": layer, "code": code, "name": doc["name"], "zone_type": L["zone_type"], "vertices": rec["vertices"], "area_km2": rec["area_km2"]})
+        doc = _zone_doc(iso, L, rec, now)
+        existing = await db.jurisdictions.find_one({"code": doc["code"]})
+        zid = await _store_zone(job["id"], iso, existing, doc, rec, now, failed)
+        if not zid:
+            continue
+        await audit("jurisdiction", zid, "jurisdiction.imported", {"code": doc["code"], "mrgid": rec["mrgid"], "vertices": rec["vertices"]}, actor)
+        imported.append({"iso3": iso, "layer": layer, "code": doc["code"], "name": doc["name"], "zone_type": L["zone_type"], "vertices": rec["vertices"], "area_km2": rec["area_km2"]})
         await job_log(job["id"], f"{iso}: imported {doc['name']} ({rec['vertices']} vertices, {rec['area_km2']} km²)")
         await asyncio.sleep(0.3)
     if replace_demo and imported:

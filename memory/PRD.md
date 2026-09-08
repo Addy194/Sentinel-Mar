@@ -89,6 +89,14 @@ POST/GET scenes, POST scenes/{id}/detect (mock), POST/GET spill-observations, PO
 - Skipped by user decision: httpOnly-cookie auth, big refactors (run_correlation/build_pdf/build_playbook/CaseMap), `random`→`secrets` (deterministic seeded mock), lazy imports.
 - Verified: 26/26 backend (iter 2 + 10 suites), login/dashboard/vessel-profile smoke screenshot.
 
+## Implemented (iteration 11b — second review pass)
+- Empty catch blocks → `console.warn` with context (LiveFeed ×2, AuthContext); EventSource cleanup nullifies ref.
+- `CaseMap.jsx`: all inline `style`/`pathOptions` hoisted to module constants or pure helper fns; `colorFor`/`selectHandler`/`zoneFilter` in `useCallback`. `ZoneRules.jsx`: `activeZones`/`activeRules` via `useMemo`.
+- Type hints on `db.py`, `jobs.py`, `gapfill.py`, `correlation_env.py`.
+- Complexity trims (behaviour byte-identical vs HEAD, verified by running old/new side-by-side): `csv_ingest._row_to_position`, `marine_regions._fetch_or_fail/_zone_doc/_store_zone`, `detector._dark_mask/_contour_to_spot`, `gapfill._dead_reckon`.
+- Tested: iteration_11 — backend 3/3 + 99/101 regression (2 known flaky: non-idempotent CSV dedup fixture; login lockout under parallel runs — passes alone), all UI flows pass, single SSE connection across navigation.
+- Known cosmetic: "<span> cannot be a child of <option>" console warning (pre-existing, source not in app code).
+
 ## Backlog (prioritized)
 - P1: Resend + aisstream keys; U-Net SAR segmentation; OpenDrift forward drift; socio-economic vulnerability (Overpass POIs); WhatsApp citizen reports; i18n (Hindi/Tamil/Marathi); outbound port-authority webhooks (HMAC); ErrorBoundary around CaseDetail; exponential lockout backoff.
 - P2: Additional met/ocean providers, replay testing harness, observability/metrics, SAR segmentation model once labeled data exists, separate worker process (Celery/Redis).

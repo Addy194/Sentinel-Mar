@@ -1,4 +1,6 @@
 import os
+import uuid
+from typing import Any, Optional
 from pathlib import Path
 from datetime import datetime, timezone
 from dotenv import load_dotenv
@@ -11,7 +13,7 @@ client = AsyncIOMotorClient(os.environ["MONGO_URL"])
 db = client[os.environ["DB_NAME"]]
 
 
-async def ensure_indexes():
+async def ensure_indexes() -> None:
     await db.ais_positions.create_index([("location", pymongo.GEOSPHERE)])
     await db.ais_positions.create_index([("timestamp", 1)])
     await db.ais_positions.create_index([("mmsi", 1), ("timestamp", 1)])
@@ -41,7 +43,7 @@ async def ensure_indexes():
     await db.detector_feedback.create_index("detector_version")
 
 
-def to_utc(dt):
+def to_utc(dt: Optional[datetime]) -> Optional[datetime]:
     if dt is None:
         return None
     if dt.tzinfo is None:
@@ -49,7 +51,7 @@ def to_utc(dt):
     return dt.astimezone(timezone.utc)
 
 
-def clean(doc):
+def clean(doc: Any) -> Any:
     """Strip Mongo _id and make naive datetimes UTC-aware (recursively)."""
     if isinstance(doc, list):
         return [clean(d) for d in doc]
@@ -60,8 +62,7 @@ def clean(doc):
     return doc
 
 
-async def audit(entity_type, entity_id, action, payload=None, actor="system"):
-    import uuid
+async def audit(entity_type: str, entity_id: str, action: str, payload: Optional[dict] = None, actor: str = "system") -> dict:
     ev = {
         "id": str(uuid.uuid4()),
         "entity_type": entity_type,

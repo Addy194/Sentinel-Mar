@@ -22,7 +22,7 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const logout = useCallback(async () => {
-    try { await api.post("/auth/logout"); } catch { /* ignore */ }
+    try { await api.post("/auth/logout"); } catch (error) { console.warn("AuthContext: server logout failed, clearing local session anyway", error); }
     localStorage.removeItem(TOKEN_KEY);
     setUser(false);
   }, []);

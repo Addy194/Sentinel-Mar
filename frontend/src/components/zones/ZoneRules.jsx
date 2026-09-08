@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { BellRing, Plus, Trash2, Play } from "lucide-react";
 import { api, apiError, fmtTime, hasRole } from "@/lib/api";
@@ -15,6 +15,8 @@ export const ZoneRules = ({ zones }) => {
   const [f, setF] = useState(empty);
   const [busy, setBusy] = useState(false);
   const sup = hasRole(user, "supervisor");
+  const activeZones = useMemo(() => zones.filter((z) => z.active), [zones]);
+  const activeRules = useMemo(() => rules.filter((r) => r.active).length, [rules]);
   const load = () => api.get("/zone-rules").then((r) => setRules(r.data)).catch((e) => toast.error(apiError(e)));
   useEffect(() => { load(); }, []);
 
@@ -35,7 +37,7 @@ export const ZoneRules = ({ zones }) => {
 
   return (
     <div className="mt-5 rounded border p-4" style={{ borderColor: "rgba(255,107,0,0.4)", background: "rgba(255,107,0,0.04)" }} data-testid="zone-rules">
-      <div className="mb-2 flex items-center gap-2"><BellRing size={14} color="#FF6B00" /><h2 className="font-display font-semibold">Zone alert rules</h2><span className="ml-auto font-mono text-[10px] text-slate-500">{rules.filter((r) => r.active).length} active</span></div>
+      <div className="mb-2 flex items-center gap-2"><BellRing size={14} color="#FF6B00" /><h2 className="font-display font-semibold">Zone alert rules</h2><span className="ml-auto font-mono text-[10px] text-slate-500">{activeRules} active</span></div>
       <p className="mb-3 text-[11px] text-slate-400">Any spill inside the chosen zone raises an alert (and emails supervisors) when it meets the optional thresholds. Evaluated when a case opens and after each correlation run.</p>
       <div className="space-y-2" data-testid="zone-rules-list">
         {rules.map((r) => (
@@ -60,7 +62,7 @@ export const ZoneRules = ({ zones }) => {
         <div className="mt-3 grid grid-cols-2 gap-2" data-testid="zone-rule-form">
           <input data-testid="rule-name-input" placeholder="rule name" className={inputCls} style={bd} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
           <select data-testid="rule-zone-select" className={inputCls} style={bd} value={f.zone_code} onChange={(e) => setF({ ...f, zone_code: e.target.value })}>
-            <option value="">— zone —</option>{zones.filter((z) => z.active).map((z) => <option key={z.code} value={z.code}>{z.code} · {z.name}</option>)}
+            <option value="">— zone —</option>{activeZones.map((z) => <option key={z.code} value={z.code}>{z.code} · {z.name}</option>)}
           </select>
           <input data-testid="rule-min-area-input" type="number" min="0" step="0.1" placeholder="min area km² (optional)" className={inputCls} style={bd} value={f.min_area_km2} onChange={(e) => setF({ ...f, min_area_km2: e.target.value })} />
           <input data-testid="rule-min-confidence-input" type="number" min="0" max="1" step="0.05" placeholder="min detection confidence 0–1 (optional)" className={inputCls} style={bd} value={f.min_confidence} onChange={(e) => setF({ ...f, min_confidence: e.target.value })} />

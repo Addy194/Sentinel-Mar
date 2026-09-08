@@ -68,6 +68,29 @@ def _f(v):
     return None if v in ("", "NA", "N/A", "null", "None", "-") else float(v)
 
 
+def _clean_mmsi(raw):
+    mmsi = (raw or "").strip()
+    if not mmsi:
+        raise ValueError("empty MMSI")
+    return mmsi[:-2] if re.fullmatch(r"\d+\.0", mmsi) else mmsi
+
+
+def _str_or_none(v):
+    return (v or "").strip() or None
+
+
+def _row_to_position(row, mapping, default_source):
+    g = lambda k: (row.get(mapping[k]) if mapping.get(k) else None)  # noqa: E731
+    heading = _f(g("heading_deg"))
+    if heading is not None and heading > 511:
+        heading = None
+    return AISPositionIn(
+        mmsi=_clean_mmsi(g("mmsi")), imo=_str_or_none(g("imo")), vessel_name=_str_or_none(g("vessel_name")),
+        vessel_type=_str_or_none(g("vessel_type")), timestamp=parse_timestamp(g("timestamp") or ""),
+        lat=_f(g("lat")), lon=_f(g("lon")), sog_kn=_f(g("sog_kn")), cog_deg=_f(g("cog_deg")), heading_deg=heading,
+        source=_str_or_none(g("source")) or default_source)
+
+
 def rows_to_positions(rows, mapping, default_source="csv-upload"):
     missing = [r for r in REQUIRED if r not in mapping]
     if missing:
@@ -75,20 +98,7 @@ def rows_to_positions(rows, mapping, default_source="csv-upload"):
     positions, errors = [], []
     for i, row in enumerate(rows, start=2):
         try:
-            g = lambda k: (row.get(mapping[k]) if k in mapping and mapping[k] else None)  # noqa: E731
-            mmsi = (g("mmsi") or "").strip()
-            if not mmsi:
-                raise ValueError("empty MMSI")
-            if re.fullmatch(r"\d+\.0", mmsi):
-                mmsi = mmsi[:-2]
-            heading = _f(g("heading_deg"))
-            if heading is not None and heading > 511:
-                heading = None
-            positions.append(AISPositionIn(
-                mmsi=mmsi, imo=(g("imo") or "").strip() or None, vessel_name=(g("vessel_name") or "").strip() or None,
-                vessel_type=(g("vessel_type") or "").strip() or None, timestamp=parse_timestamp(g("timestamp") or ""),
-                lat=_f(g("lat")), lon=_f(g("lon")), sog_kn=_f(g("sog_kn")), cog_deg=_f(g("cog_deg")), heading_deg=heading,
-                source=(g("source") or "").strip() or default_source))
+            positions.append(_row_to_position(row, mapping, default_source))
         except Exception as e:  # noqa: BLE001
             errors.append({"row": i, "error": str(e)[:160]})
     return positions, errors

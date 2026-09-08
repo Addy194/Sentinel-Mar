@@ -15,7 +15,7 @@ const siren = () => {
       g.gain.setValueAtTime(0.08, ac.currentTime + t); g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + t + 0.3);
       o.connect(g); g.connect(ac.destination); o.start(ac.currentTime + t); o.stop(ac.currentTime + t + 0.3);
     });
-  } catch { /* audio blocked until user gesture */ }
+  } catch (error) { console.warn("LiveFeed: siren audio blocked (needs user gesture)", error); }
 };
 
 export const LiveFeedProvider = ({ children }) => {
@@ -54,7 +54,7 @@ export const LiveFeedProvider = ({ children }) => {
           const { data } = await api.get("/alerts/latest", { params: { since: sinceRef.current, limit: 20 } });
           sinceRef.current = data.server_time;
           [...data.alerts].reverse().forEach((a) => onAlert(a));
-        } catch { /* keep polling */ }
+        } catch (error) { console.warn("LiveFeed: /alerts/latest poll failed, will retry", error); }
       }, 10000);
     };
     const connect = () => {
@@ -66,7 +66,7 @@ export const LiveFeedProvider = ({ children }) => {
       es.onerror = () => { es.close(); failures += 1; if (failures >= 2) startPolling(); if (!closed) setTimeout(connect, Math.min(30000, 2000 * failures)); };
     };
     connect();
-    return () => { closed = true; es?.close(); if (poll) clearInterval(poll); };
+    return () => { closed = true; es?.close(); es = null; if (poll) { clearInterval(poll); poll = null; } };
   }, [user, onAlert]);
 
   const toggleMute = useCallback(() => setMuted((m) => { localStorage.setItem("sm_mute", m ? "0" : "1"); return !m; }), []);

@@ -1,6 +1,7 @@
 import io
 import math
 from datetime import datetime, timezone
+from typing import Optional
 
 import cv2
 import numpy as np
@@ -21,50 +22,56 @@ def _affine(bbox, w, h):
     return lambda x, y: (west + (x / w) * (east - west), north - (y / h) * (north - south))
 
 
-def analyze(png: bytes, bbox: list, footprint: dict) -> dict:
-    """Otsu dark-spot heuristic on a rendered quicklook. Returns candidate GeoJSON polygons in pixel→lon/lat via bbox affine."""
-    img = Image.open(io.BytesIO(png)).convert("RGBA")
-    arr = np.array(img)
-    h, w = arr.shape[:2]
-    vv = arr[:, :, 0].astype(np.uint8)  # rendered_preview: R = VV backscatter
-    valid = (arr[:, :, 3] > 0) & (arr[:, :, :3].sum(axis=2) > 6)
-    sea = vv[valid]
-    if sea.size < 500:
-        return {"spots": [], "note": "insufficient valid pixels", "width": w, "height": h}
+def _dark_mask(vv: np.ndarray, valid: np.ndarray, sea: np.ndarray):
+    """Otsu threshold (capped at the 12th percentile) + morphology → binary dark-spot mask and threshold used."""
     blur = cv2.GaussianBlur(vv, (5, 5), 0)
     thr, _ = cv2.threshold(sea.reshape(-1, 1), 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     thr = min(thr, np.percentile(sea, 12))
     dark = ((blur < thr) & valid).astype(np.uint8) * 255
     k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
     dark = cv2.morphologyEx(cv2.morphologyEx(dark, cv2.MORPH_OPEN, k), cv2.MORPH_CLOSE, k, iterations=2)
+    return dark, float(thr)
+
+
+def _contour_to_spot(c, vv: np.ndarray, dark: np.ndarray, to_geo, fp, med: float) -> Optional[dict]:
+    """Shape/contrast filters for one contour; returns a spot record or None when rejected."""
+    h, w = dark.shape
+    area = cv2.contourArea(c)
+    if area < MIN_AREA_PX or area > MAX_AREA_FRAC * w * h or len(c) < 5:
+        return None
+    (cx, cy), (ma, mi), ang = cv2.fitEllipse(c)
+    elong = max(ma, mi) / max(min(ma, mi), 1e-3)
+    if elong < MIN_ELONGATION:
+        return None
+    mask = np.zeros_like(dark)
+    cv2.drawContours(mask, [c], -1, 255, -1)
+    contrast = max(0.0, (med - float(vv[mask > 0].mean())) / max(med, 1))
+    pts = cv2.approxPolyDP(c, 1.5, True).reshape(-1, 2)
+    ring = [list(to_geo(float(x), float(y))) for x, y in pts]
+    ring.append(ring[0])
+    poly = Polygon(ring)
+    if not poly.is_valid or poly.is_empty or not poly.intersects(fp):
+        return None
+    conf = round(min(0.55, 0.2 + 0.25 * contrast + 0.05 * min(elong / 4, 1)), 2)
+    return {"geometry": {"type": "Polygon", "coordinates": [[[round(x, 5), round(y, 5)] for x, y in ring]]}, "area_px": area, "elongation": round(elong, 2),
+            "contrast": round(contrast, 3), "confidence": conf, "pixel_bbox": [int(v) for v in cv2.boundingRect(c)], "centroid_px": [cx, cy], "angle_deg": round(ang, 1)}
+
+
+def analyze(png: bytes, bbox: list, footprint: dict) -> dict:
+    """Otsu dark-spot heuristic on a rendered quicklook. Returns candidate GeoJSON polygons in pixel→lon/lat via bbox affine."""
+    arr = np.array(Image.open(io.BytesIO(png)).convert("RGBA"))
+    h, w = arr.shape[:2]
+    vv = arr[:, :, 0].astype(np.uint8)  # rendered_preview: R = VV backscatter
+    valid = (arr[:, :, 3] > 0) & (arr[:, :, :3].sum(axis=2) > 6)
+    sea = vv[valid]
+    if sea.size < 500:
+        return {"spots": [], "note": "insufficient valid pixels", "width": w, "height": h}
+    dark, thr = _dark_mask(vv, valid, sea)
     contours, _ = cv2.findContours(dark, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    to_geo = _affine(bbox, w, h)
-    fp = shape(footprint)
-    med = float(np.median(sea))
-    spots = []
-    for c in contours:
-        area = cv2.contourArea(c)
-        if area < MIN_AREA_PX or area > MAX_AREA_FRAC * w * h or len(c) < 5:
-            continue
-        (cx, cy), (ma, mi), ang = cv2.fitEllipse(c)
-        elong = max(ma, mi) / max(min(ma, mi), 1e-3)
-        if elong < MIN_ELONGATION:
-            continue
-        mask = np.zeros_like(dark)
-        cv2.drawContours(mask, [c], -1, 255, -1)
-        mean_in = float(vv[mask > 0].mean())
-        contrast = max(0.0, (med - mean_in) / max(med, 1))
-        pts = cv2.approxPolyDP(c, 1.5, True).reshape(-1, 2)
-        ring = [list(to_geo(float(x), float(y))) for x, y in pts]
-        ring.append(ring[0])
-        poly = Polygon(ring)
-        if not poly.is_valid or poly.is_empty or not poly.intersects(fp):
-            continue
-        conf = round(min(0.55, 0.2 + 0.25 * contrast + 0.05 * min(elong / 4, 1)), 2)
-        spots.append({"geometry": {"type": "Polygon", "coordinates": [[[round(x, 5), round(y, 5)] for x, y in ring]]}, "area_px": area, "elongation": round(elong, 2),
-                      "contrast": round(contrast, 3), "confidence": conf, "pixel_bbox": [int(v) for v in cv2.boundingRect(c)], "centroid_px": [cx, cy], "angle_deg": round(ang, 1)})
+    to_geo, fp, med = _affine(bbox, w, h), shape(footprint), float(np.median(sea))
+    spots = [s for s in (_contour_to_spot(c, vv, dark, to_geo, fp, med) for c in contours) if s]
     spots.sort(key=lambda s: (-s["contrast"] * math.log(s["area_px"] + 1)))
-    return {"spots": spots[:MAX_SPOTS], "threshold": float(thr), "sea_median": med, "width": w, "height": h, "candidates_total": len(spots)}
+    return {"spots": spots[:MAX_SPOTS], "threshold": thr, "sea_median": med, "width": w, "height": h, "candidates_total": len(spots)}
 
 
 def thumbnail_webp(png: bytes, pixel_bbox: list, pad: int = 40) -> bytes:
