@@ -45,7 +45,7 @@ export default function Jobs() {
                   {open === j.id && (
                     <tr><td colSpan={7} className="px-4 pb-3" data-testid={`job-log-${j.id}`}>
                       <div className="rounded p-3 font-mono text-[11px] leading-relaxed" style={{ background: "var(--bg-primary)", border: "1px solid var(--border-default)" }}>
-                        {j.logs.map((l, i) => <div key={i} className={l.level === "error" ? "text-rose-300" : "text-slate-300"}><span className="text-slate-600">{l.t.slice(11, 19)}</span> {l.msg}</div>)}
+                        {j.logs.map((l, i) => <div key={`${l.t}-${i}`} className={l.level === "error" ? "text-rose-300" : "text-slate-300"}><span className="text-slate-600">{l.t.slice(11, 19)}</span> {l.msg}</div>)}
                         {j.payload?.case_id && <button className="mt-2 text-cyan-300 hover:underline" onClick={() => nav(`/cases/${j.payload.case_id}`)} data-testid={`job-open-case-${j.id}`}>open case →</button>}
                       </div>
                     </td></tr>

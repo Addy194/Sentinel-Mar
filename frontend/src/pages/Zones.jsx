@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { MapContainer, TileLayer, GeoJSON, Tooltip } from "react-leaflet";
+import { MapContainer, TileLayer, GeoJSON } from "react-leaflet";
 import { toast } from "sonner";
 import { Map as MapIcon, Plus, Trash2, RefreshCw, Globe } from "lucide-react";
 import { api, apiError, hasRole, pollJob } from "@/lib/api";

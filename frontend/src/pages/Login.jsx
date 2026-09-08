@@ -5,9 +5,12 @@ import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
 import { apiError } from "@/lib/api";
 
+const DEMO_PASSWORDS = Object.fromEntries(
+  (process.env.REACT_APP_DEMO_PASSWORDS || "").split(",").map((p) => p.split(":")).filter((kv) => kv.length === 2)
+);
 const DEMO = [
-  { role: "analyst", email: "analyst@sentinelmar.demo", password: "Analyst#2026", scope: "ingest · correlate · review" },
-  { role: "supervisor", email: "supervisor@sentinelmar.demo", password: "Supervisor#2026", scope: "+ acknowledge alerts · override cases" },
+  { role: "analyst", email: "analyst@sentinelmar.demo", scope: "ingest · correlate · review" },
+  { role: "supervisor", email: "supervisor@sentinelmar.demo", scope: "+ acknowledge alerts · override cases" },
 ];
 
 export default function Login() {
@@ -64,14 +67,14 @@ export default function Login() {
             <p className="label-mono mb-2">Demo accounts</p>
             <div className="space-y-1.5">
               {DEMO.map((d) => (
-                <button key={d.role} type="button" data-testid={`demo-login-${d.role}`} onClick={() => { setEmail(d.email); setPassword(d.password); }}
+                <button key={d.role} type="button" data-testid={`demo-login-${d.role}`} onClick={() => { setEmail(d.email); setPassword(DEMO_PASSWORDS[d.role] || ""); }}
                   className="flex w-full items-center justify-between rounded border px-3 py-2 text-left text-xs transition-colors hover:bg-slate-800/60" style={{ borderColor: "var(--border-default)" }}>
                   <span><span className="font-mono uppercase tracking-wider text-cyan-300">{d.role}</span> <span className="text-slate-400 ml-2">{d.email}</span></span>
                   <span className="text-[10px] text-slate-500">{d.scope}</span>
                 </button>
               ))}
             </div>
-            <p className="mt-2 text-[10px] text-slate-500">Admin account is the workspace owner's email (manages users).</p>
+            <p className="mt-2 text-[10px] text-slate-500">{Object.keys(DEMO_PASSWORDS).length ? "Demo credentials are pre-filled." : "Demo buttons pre-fill the email only — enter the issued password."} Admin account is the workspace owner's email (manages users).</p>
           </div>
         </form>
       </div>

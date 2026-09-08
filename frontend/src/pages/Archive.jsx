@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { BookOpen, Plus } from "lucide-react";
@@ -16,8 +16,8 @@ export default function Archive() {
   const [f, setF] = useState(empty);
   const [showForm, setShowForm] = useState(false);
   const q = sp.get("q") || "";
-  const load = () => api.get("/archive", { params: { q } }).then((r) => setRows(r.data)).catch((e) => toast.error(apiError(e)));
-  useEffect(() => { load(); }, [q]); // eslint-disable-line react-hooks/exhaustive-deps
+  const load = useCallback(() => api.get("/archive", { params: { q } }).then((r) => setRows(r.data)).catch((e) => toast.error(apiError(e))), [q]);
+  useEffect(() => { load(); }, [load]);
   const create = async () => {
     try {
       await api.post("/archive", { ...f, lat: +f.lat, lon: +f.lon, volume_tonnes: f.volume_tonnes === "" ? null : +f.volume_tonnes, ecosystems: f.ecosystems.split(";").map((s) => s.trim()).filter(Boolean), remediation: f.remediation.split(";").map((s) => s.trim()).filter(Boolean) });

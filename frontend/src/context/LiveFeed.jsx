@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { api, TOKEN_KEY } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
@@ -69,6 +69,9 @@ export const LiveFeedProvider = ({ children }) => {
     return () => { closed = true; es?.close(); if (poll) clearInterval(poll); };
   }, [user, onAlert]);
 
-  const toggleMute = () => { const m = !muted; setMuted(m); localStorage.setItem("sm_mute", m ? "1" : "0"); };
-  return <Ctx.Provider value={{ alerts, unread, clearUnread: () => setUnread(0), critical, dismissCritical: () => setCritical(null), mode, lastJob, muted, toggleMute }}>{children}</Ctx.Provider>;
+  const toggleMute = useCallback(() => setMuted((m) => { localStorage.setItem("sm_mute", m ? "0" : "1"); return !m; }), []);
+  const clearUnread = useCallback(() => setUnread(0), []);
+  const dismissCritical = useCallback(() => setCritical(null), []);
+  const value = useMemo(() => ({ alerts, unread, clearUnread, critical, dismissCritical, mode, lastJob, muted, toggleMute }), [alerts, unread, clearUnread, critical, dismissCritical, mode, lastJob, muted, toggleMute]);
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 };

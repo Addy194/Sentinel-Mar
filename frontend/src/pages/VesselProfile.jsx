@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { ArrowLeft, Ship, Radio, Gavel, AlertTriangle, Eye } from "lucide-react";
@@ -17,8 +17,8 @@ export default function VesselProfile() {
   const [p, setP] = useState(null);
   const [err, setErr] = useState("");
   const [watch, setWatch] = useState(null);
-  const loadWatch = () => api.get("/watchlist").then((r) => setWatch(r.data.find((w) => w.active && w.mmsi === mmsi) || null)).catch(() => {});
-  useEffect(() => { api.get(`/vessels/${mmsi}/profile`).then((r) => setP(r.data)).catch((e) => { setErr(apiError(e)); toast.error(apiError(e)); }); loadWatch(); }, [mmsi]); // eslint-disable-line react-hooks/exhaustive-deps
+  const loadWatch = useCallback(() => api.get("/watchlist").then((r) => setWatch(r.data.find((w) => w.active && w.mmsi === mmsi) || null)).catch(() => {}), [mmsi]);
+  useEffect(() => { api.get(`/vessels/${mmsi}/profile`).then((r) => setP(r.data)).catch((e) => { setErr(apiError(e)); toast.error(apiError(e)); }); loadWatch(); }, [mmsi, loadWatch]);
   const flag = async () => {
     const reason = window.prompt("Reason for watchlisting this vessel:");
     if (!reason || reason.trim().length < 3) return;

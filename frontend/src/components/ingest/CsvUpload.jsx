@@ -70,7 +70,7 @@ export const CsvUpload = ({ onDone }) => {
           <div className="overflow-x-auto rounded border" style={{ borderColor: "var(--border-default)" }}>
             <table className="w-full text-[11px]">
               <thead><tr className="label-mono text-left">{preview.headers.map((h) => <th key={h} className="px-2 py-1.5 font-normal whitespace-nowrap">{h}</th>)}</tr></thead>
-              <tbody>{preview.preview_rows.map((r, i) => <tr key={i} className="border-t font-mono" style={{ borderColor: "var(--border-default)" }}>{preview.headers.map((h) => <td key={h} className="px-2 py-1 whitespace-nowrap text-slate-300">{r[h]}</td>)}</tr>)}</tbody>
+              <tbody>{preview.preview_rows.map((r, i) => <tr key={`${preview.headers.map((h) => r[h]).join("|")}-${i}`} className="border-t font-mono" style={{ borderColor: "var(--border-default)" }}>{preview.headers.map((h) => <td key={h} className="px-2 py-1 whitespace-nowrap text-slate-300">{r[h]}</td>)}</tr>)}</tbody>
             </table>
           </div>
           {preview.sample_errors?.length > 0 && <p className="text-[11px] text-amber-300" data-testid="csv-sample-errors">Sample parse issues: {preview.sample_errors.map((e) => `row ${e.row}: ${e.error}`).join(" · ")}</p>}
@@ -80,7 +80,7 @@ export const CsvUpload = ({ onDone }) => {
       {result && (
         <div className="mt-3 rounded border p-3 font-mono text-[11px] text-slate-300 fade-up" style={{ borderColor: "rgba(16,185,129,0.4)" }} data-testid="csv-result">
           rows {result.rows_total} · inserted <span className="text-emerald-300">{result.inserted}</span> · duplicates <span className="text-amber-300">{result.duplicates}</span> · flagged {result.flagged} · row errors <span className="text-rose-300">{result.row_error_count}</span> · vessels {result.vessels}
-          {result.row_errors?.length > 0 && <ul className="mt-1 text-slate-500">{result.row_errors.slice(0, 5).map((e, i) => <li key={i}>row {e.row}: {e.error}</li>)}</ul>}
+          {result.row_errors?.length > 0 && <ul className="mt-1 text-slate-500">{result.row_errors.slice(0, 5).map((e) => <li key={`${e.row}-${e.error}`}>row {e.row}: {e.error}</li>)}</ul>}
         </div>
       )}
     </div>

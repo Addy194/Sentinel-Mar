@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
+import { PieChart, Pie, Cell, Tooltip } from "recharts";
 import { Target } from "lucide-react";
 import { api, apiError, pct } from "@/lib/api";
 
@@ -24,12 +24,12 @@ export const DetectorPrecision = () => {
         </div>
         <div className="h-28 flex-1 min-w-0" data-testid="fp-reason-chart">
           {d.fp_reasons.length ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={d.fp_reasons} dataKey="count" nameKey="reason" innerRadius={28} outerRadius={50} paddingAngle={2} stroke="none">{d.fp_reasons.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}</Pie>
+            <div className="flex h-full items-center justify-center">
+              <PieChart width={120} height={112}>
+                <Pie data={d.fp_reasons} dataKey="count" nameKey="reason" innerRadius={28} outerRadius={50} paddingAngle={2} stroke="none" isAnimationActive={false}>{d.fp_reasons.map((r, i) => <Cell key={r.reason} fill={COLORS[i % COLORS.length]} />)}</Pie>
                 <Tooltip contentStyle={{ background: "#0A0E17", border: "1px solid #334155", fontSize: 11, fontFamily: "monospace" }} />
               </PieChart>
-            </ResponsiveContainer>
+            </div>
           ) : <p className="pt-8 text-center text-[10px] text-slate-500">no false positives recorded</p>}
         </div>
       </div>

@@ -7,7 +7,7 @@ import { api, apiError, fmtTime } from "@/lib/api";
 import { GibsLayer } from "@/components/map/GibsLayer";
 import { DensityLayer } from "@/components/map/DensityLayer";
 import { SceneWatches } from "@/components/explorer/SceneWatches";
-import { AssetSearch, assetBounds } from "@/components/map/AssetSearch";
+import { AssetSearch } from "@/components/map/AssetSearch";
 import { TILE_PERF, OSM_URL } from "@/components/map/tiles";
 
 const inputCls = "w-full rounded border bg-slate-900/60 px-2.5 py-1.5 font-mono text-xs text-slate-100 outline-none focus:border-cyan-400/60";

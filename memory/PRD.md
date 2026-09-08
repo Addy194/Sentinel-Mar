@@ -82,6 +82,13 @@ POST/GET scenes, POST scenes/{id}/detect (mock), POST/GET spill-observations, PO
 - **Indian maritime territories**: Marine Regions import generalised to layers `eez` / `eez_24nm` / `eez_12nm` → zones IND-EEZ (eez), IND-CZ (contiguous), IND-TS (territorial); 12/24 NM bands keep inner rings; priority territorial < contiguous < eez; `zone_label` on jurisdictions. Case map: distinct styles (solid orange TS, dashed amber CZ, dotted blue EEZ) with per-kind toggles; Zones page labels + layer checkboxes + "India · all 3 zones" preset. Detection details show zone name (case chip, "also" chips); candidates tagged with `zone`/`zones` from closest AIS fix (`resolve_point_zones`).
 - Tested: iteration_10 — 10/10 backend, all UI flows pass.
 
+## Implemented (iteration 11 — code-quality pass)
+- Login demo passwords removed from bundle → `REACT_APP_DEMO_PASSWORDS="analyst:…,supervisor:…"` in gitignored `frontend/.env` (quoted, `#` safe); buttons pre-fill email only when unset.
+- Backend test credentials moved to `backend/tests/.env.test` (gitignored) via `tests/conftest.py` + `TEST_*_PASSWORD` env vars.
+- Frontend: flat `eslint.config.js` (react + react-hooks) + `yarn lint`; 0 errors / 0 app warnings. Loaders wrapped in `useCallback` (CaseTimeline, DetectorFeedback, Archive, VesselProfile), context values memoised (AuthContext, LiveFeed), index keys → stable keys (Jobs, CsvUpload, CaseTimeline, CandidatesTable, DetectorPrecision), Recharts `minWidth/minHeight` fix, dead imports removed. pyflakes: no undefined names.
+- Skipped by user decision: httpOnly-cookie auth, big refactors (run_correlation/build_pdf/build_playbook/CaseMap), `random`→`secrets` (deterministic seeded mock), lazy imports.
+- Verified: 26/26 backend (iter 2 + 10 suites), login/dashboard/vessel-profile smoke screenshot.
+
 ## Backlog (prioritized)
 - P1: Resend + aisstream keys; U-Net SAR segmentation; OpenDrift forward drift; socio-economic vulnerability (Overpass POIs); WhatsApp citizen reports; i18n (Hindi/Tamil/Marathi); outbound port-authority webhooks (HMAC); ErrorBoundary around CaseDetail; exponential lockout backoff.
 - P2: Additional met/ocean providers, replay testing harness, observability/metrics, SAR segmentation model once labeled data exists, separate worker process (Celery/Redis).

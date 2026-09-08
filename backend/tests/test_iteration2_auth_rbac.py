@@ -13,9 +13,9 @@ if not BASE:
                 BASE = line.split("=", 1)[1].strip()
 API = f"{BASE}/api"
 
-ADMIN = ("shawpriyanshu950@gmail.com", "Admin#2026")
-SUPERVISOR = ("supervisor@sentinelmar.demo", "Supervisor#2026")
-ANALYST = ("analyst@sentinelmar.demo", "Analyst#2026")
+ADMIN = ("shawpriyanshu950@gmail.com", os.environ["TEST_ADMIN_PASSWORD"])
+SUPERVISOR = ("supervisor@sentinelmar.demo", os.environ["TEST_SUPERVISOR_PASSWORD"])
+ANALYST = ("analyst@sentinelmar.demo", os.environ["TEST_ANALYST_PASSWORD"])
 
 
 def _login(email, password):

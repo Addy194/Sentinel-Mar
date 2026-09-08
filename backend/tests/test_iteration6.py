@@ -22,9 +22,9 @@ def _load_env_url():
 BASE_URL = _load_env_url().rstrip("/")
 API = f"{BASE_URL}/api"
 
-ADMIN = ("shawpriyanshu950@gmail.com", "Admin#2026")
-SUPERVISOR = ("supervisor@sentinelmar.demo", "Supervisor#2026")
-ANALYST = ("analyst@sentinelmar.demo", "Analyst#2026")
+ADMIN = ("shawpriyanshu950@gmail.com", os.environ["TEST_ADMIN_PASSWORD"])
+SUPERVISOR = ("supervisor@sentinelmar.demo", os.environ["TEST_SUPERVISOR_PASSWORD"])
+ANALYST = ("analyst@sentinelmar.demo", os.environ["TEST_ANALYST_PASSWORD"])
 
 
 def _login(email, password):

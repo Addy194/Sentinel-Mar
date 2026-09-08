@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Share2, FileDown, Link2, Ban } from "lucide-react";
 import { api, apiError, fmtTime, hasRole } from "@/lib/api";
@@ -14,8 +14,8 @@ export const CaseTimeline = ({ caseId, caseNumber }) => {
   const [busy, setBusy] = useState(false);
   const [hours, setHours] = useState(168);
   const [note, setNote] = useState("");
-  const load = () => Promise.all([api.get(`/cases/${caseId}/timeline`), api.get(`/cases/${caseId}/shares`)]).then(([t, s]) => { setTl(t.data); setShares(s.data); }).catch((e) => toast.error(apiError(e)));
-  useEffect(() => { load(); }, [caseId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const load = useCallback(() => Promise.all([api.get(`/cases/${caseId}/timeline`), api.get(`/cases/${caseId}/shares`)]).then(([t, s]) => { setTl(t.data); setShares(s.data); }).catch((e) => toast.error(apiError(e))), [caseId]);
+  useEffect(() => { load(); }, [load]);
 
   const exportHtml = async () => {
     try {
@@ -67,7 +67,7 @@ export const CaseTimeline = ({ caseId, caseNumber }) => {
       )}
       <ol className="relative ml-2 mt-4 space-y-3 border-l pl-5" style={{ borderColor: "var(--border-highlight)" }} data-testid="timeline-events">
         {tl.events.map((e, i) => (
-          <li key={i} className="relative text-xs" data-testid={`timeline-event-${e.kind}`}>
+          <li key={`${e.at || e.t || ""}-${e.kind}-${i}`} className="relative text-xs" data-testid={`timeline-event-${e.kind}`}>
             <span className="absolute -left-[26px] top-1 h-2.5 w-2.5 rounded-full" style={{ background: KIND_COLOR[e.kind] || "#94A3B8", boxShadow: "0 0 0 3px var(--bg-secondary)" }} />
             <div className="flex flex-wrap items-baseline gap-x-2">
               <span className="font-mono text-[10px] text-slate-400">{fmtTime(e.t)}</span>

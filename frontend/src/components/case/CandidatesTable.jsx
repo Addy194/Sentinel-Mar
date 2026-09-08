@@ -61,7 +61,7 @@ export const CandidatesTable = ({ candidates, selected, onSelect }) => {
                 </div>
                 {c.notes?.length > 0 && (
                   <ul className="mt-2 space-y-0.5 text-[11px] text-amber-300/90" data-testid={`candidate-notes-${c.mmsi}`}>
-                    {c.notes.map((n, i) => <li key={i}>▸ {n}</li>)}
+                    {c.notes.map((n) => <li key={n}>▸ {n}</li>)}
                   </ul>
                 )}
               </div>

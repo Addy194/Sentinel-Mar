@@ -17,9 +17,9 @@ BASE = os.environ.get("REACT_APP_BACKEND_URL") or _read_frontend_env()
 BASE = BASE.rstrip("/")
 API = f"{BASE}/api"
 
-ADMIN = ("shawpriyanshu950@gmail.com", "Admin#2026")
-SUP = ("supervisor@sentinelmar.demo", "Supervisor#2026")
-ANL = ("analyst@sentinelmar.demo", "Analyst#2026")
+ADMIN = ("shawpriyanshu950@gmail.com", os.environ["TEST_ADMIN_PASSWORD"])
+SUP = ("supervisor@sentinelmar.demo", os.environ["TEST_SUPERVISOR_PASSWORD"])
+ANL = ("analyst@sentinelmar.demo", os.environ["TEST_ANALYST_PASSWORD"])
 
 
 def _login(email, pw):

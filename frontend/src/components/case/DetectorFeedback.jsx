@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ThumbsUp, ThumbsDown, HelpCircle } from "lucide-react";
 import { api, apiError, fmtTime } from "@/lib/api";
@@ -13,8 +13,8 @@ export const DetectorFeedback = ({ caseId, source, onSaved }) => {
   const [reason, setReason] = useState("low_wind");
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
-  const load = () => api.get(`/cases/${caseId}/detector-feedback`).then((r) => setRows(r.data)).catch(() => {});
-  useEffect(() => { load(); }, [caseId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const load = useCallback(() => api.get(`/cases/${caseId}/detector-feedback`).then((r) => setRows(r.data)).catch(() => {}), [caseId]);
+  useEffect(() => { load(); }, [load]);
   const submit = async () => {
     setBusy(true);
     try { await api.post(`/cases/${caseId}/detector-feedback`, { verdict, reason: verdict === "false_positive" ? reason : null, notes }); toast.success("Detector feedback recorded"); setVerdict(null); setNotes(""); load(); onSaved?.(); }

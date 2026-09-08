@@ -26,9 +26,9 @@ def _read_base_url():
 BASE_URL = _read_base_url()
 API = f"{BASE_URL}/api"
 
-ADMIN = {"email": "shawpriyanshu950@gmail.com", "password": "Admin#2026"}
-ANALYST = {"email": "analyst@sentinelmar.demo", "password": "Analyst#2026"}
-SUPERVISOR = {"email": "supervisor@sentinelmar.demo", "password": "Supervisor#2026"}
+ADMIN = {"email": "shawpriyanshu950@gmail.com", "password": os.environ["TEST_ADMIN_PASSWORD"]}
+ANALYST = {"email": "analyst@sentinelmar.demo", "password": os.environ["TEST_ANALYST_PASSWORD"]}
+SUPERVISOR = {"email": "supervisor@sentinelmar.demo", "password": os.environ["TEST_SUPERVISOR_PASSWORD"]}
 
 
 def _login(session, creds):

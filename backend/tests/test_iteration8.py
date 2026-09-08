@@ -13,9 +13,9 @@ BASE_URL = os.environ.get("REACT_APP_BACKEND_URL") or open("/app/frontend/.env")
 BASE_URL = BASE_URL.rstrip("/")
 API = f"{BASE_URL}/api"
 
-ADMIN = ("shawpriyanshu950@gmail.com", "Admin#2026")
-ANALYST = ("analyst@sentinelmar.demo", "Analyst#2026")
-SUPERVISOR = ("supervisor@sentinelmar.demo", "Supervisor#2026")
+ADMIN = ("shawpriyanshu950@gmail.com", os.environ["TEST_ADMIN_PASSWORD"])
+ANALYST = ("analyst@sentinelmar.demo", os.environ["TEST_ANALYST_PASSWORD"])
+SUPERVISOR = ("supervisor@sentinelmar.demo", os.environ["TEST_SUPERVISOR_PASSWORD"])
 
 CASE_NUMBER = "SPL-20260610-001"
 
