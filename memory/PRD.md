@@ -78,6 +78,10 @@ POST/GET scenes, POST scenes/{id}/detect (mock), POST/GET spill-observations, PO
 - **Prosecution export**: supervisor+ ZIP (PDF, case/spill/scene/AIS/results/reviews/audit/feedback/playbook JSON, attachments, MANIFEST.json SHA-256 + content hash), ledger `prosecution_exports`, audit; public `GET /verify/{hash}`, `POST /verify` (re-hash every file, detect tampering/repackaging), `/verify` page.
 - Tested: iteration_9 — 28/29 backend (fuzzy ranking fixed after), all UI flows pass (testing agent fixed missing hasRole import in CaseDetail).
 
+## Implemented (iteration 10)
+- **Indian maritime territories**: Marine Regions import generalised to layers `eez` / `eez_24nm` / `eez_12nm` → zones IND-EEZ (eez), IND-CZ (contiguous), IND-TS (territorial); 12/24 NM bands keep inner rings; priority territorial < contiguous < eez; `zone_label` on jurisdictions. Case map: distinct styles (solid orange TS, dashed amber CZ, dotted blue EEZ) with per-kind toggles; Zones page labels + layer checkboxes + "India · all 3 zones" preset. Detection details show zone name (case chip, "also" chips); candidates tagged with `zone`/`zones` from closest AIS fix (`resolve_point_zones`).
+- Tested: iteration_10 — 10/10 backend, all UI flows pass.
+
 ## Backlog (prioritized)
 - P1: Resend + aisstream keys; U-Net SAR segmentation; OpenDrift forward drift; socio-economic vulnerability (Overpass POIs); WhatsApp citizen reports; i18n (Hindi/Tamil/Marathi); outbound port-authority webhooks (HMAC); ErrorBoundary around CaseDetail; exponential lockout backoff.
 - P2: Additional met/ocean providers, replay testing harness, observability/metrics, SAR segmentation model once labeled data exists, separate worker process (Celery/Redis).

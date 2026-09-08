@@ -28,15 +28,21 @@ AUTHORITIES = {
 DEFAULT_ISO3 = ["NLD", "GBR", "DEU", "DNK", "BEL", "NOR"]
 
 
-async def fetch_eez(iso3: str) -> dict | None:
-    params = {"service": "WFS", "version": "1.0.0", "request": "GetFeature", "typeName": "MarineRegions:eez",
+LAYERS = {"eez": {"typeName": "MarineRegions:eez", "pol": "200NM", "suffix": "EEZ", "zone_type": "eez", "label": "Exclusive Economic Zone (200 NM)"},
+          "eez_24nm": {"typeName": "MarineRegions:eez_24nm", "pol": "24NM", "suffix": "CZ", "zone_type": "contiguous", "label": "Contiguous Zone (24 NM)"},
+          "eez_12nm": {"typeName": "MarineRegions:eez_12nm", "pol": "12NM", "suffix": "TS", "zone_type": "territorial", "label": "Territorial Sea (12 NM)"}}
+
+
+async def fetch_eez(iso3: str, layer: str = "eez") -> dict | None:
+    L = LAYERS[layer]
+    params = {"service": "WFS", "version": "1.0.0", "request": "GetFeature", "typeName": L["typeName"],
               "outputFormat": "application/json", "CQL_FILTER": f"iso_ter1='{iso3}'"}
-    async with httpx.AsyncClient(timeout=90) as c:
+    async with httpx.AsyncClient(timeout=120) as c:
         r = await c.get(WFS, params=params)
     r.raise_for_status()
     data = r.json()
     feats = data.get("features", [])
-    main = [f for f in feats if (f["properties"].get("pol_type") or "").upper() == "200NM"]
+    main = [f for f in feats if (f["properties"].get("pol_type") or "").upper() == L["pol"]]
     feats = main or feats
     if not feats:
         return None
@@ -46,7 +52,10 @@ async def fetch_eez(iso3: str) -> dict | None:
         merged = unary_union([g for g in merged.geoms if g.geom_type in ("Polygon", "MultiPolygon")])
     merged = unary_union(merged.buffer(0))  # dissolve overlapping parts (2dsphere rejects crossing loops)
     parts = merged.geoms if merged.geom_type == "MultiPolygon" else [merged]
-    merged = MultiPolygon([Polygon(p.exterior) for p in parts if p.area > 1e-6])  # drop island holes: land is irrelevant for spill jurisdiction
+    if layer == "eez":
+        merged = MultiPolygon([Polygon(p.exterior) for p in parts if p.area > 1e-6])  # drop island holes: land is irrelevant for spill jurisdiction
+    else:
+        merged = MultiPolygon([p for p in parts if p.area > 1e-8])  # keep inner ring: 12/24 NM bands must exclude the zone inside them
     if merged.geom_type == "Polygon":
         merged = MultiPolygon([merged])
     props = feats[0]["properties"]
@@ -60,25 +69,27 @@ async def fetch_eez(iso3: str) -> dict | None:
 async def handle_import_eez(job):
     iso_list = [s.strip().upper() for s in job["payload"].get("iso3", DEFAULT_ISO3) if s.strip()]
     replace_demo = job["payload"].get("replace_demo", True)
+    layers = [l for l in job["payload"].get("layers") or ["eez"] if l in LAYERS]
     actor = job.get("actor", "system")
     now = datetime.now(timezone.utc)
     imported, failed = [], []
-    for iso in iso_list:
-        await job_log(job["id"], f"fetching Marine Regions EEZ for {iso} …")
+    for iso, layer in [(i, l) for i in iso_list for l in layers]:
+        L = LAYERS[layer]
+        await job_log(job["id"], f"fetching Marine Regions {L['label']} for {iso} …")
         try:
-            rec = await fetch_eez(iso)
+            rec = await fetch_eez(iso, layer)
         except Exception as e:  # noqa: BLE001
-            failed.append({"iso3": iso, "error": str(e)[:200]})
-            await job_log(job["id"], f"{iso}: fetch failed — {e}", "error")
+            failed.append({"iso3": iso, "layer": layer, "error": str(e)[:200]})
+            await job_log(job["id"], f"{iso}/{layer}: fetch failed — {e}", "error")
             continue
         if not rec:
-            failed.append({"iso3": iso, "error": "no EEZ feature returned"})
-            await job_log(job["id"], f"{iso}: no feature", "warn")
+            failed.append({"iso3": iso, "layer": layer, "error": "no feature returned"})
+            await job_log(job["id"], f"{iso}/{layer}: no feature", "warn")
             continue
-        code = f"{iso}-EEZ"
-        doc = {"code": code, "name": rec["geoname"] or f"{iso} Exclusive Economic Zone", "authority": AUTHORITIES.get(iso, f"{rec['sovereign'] or iso} maritime authority"),
-               "country": iso, "zone_type": "eez", "geometry": rec["geometry"], "active": True,
-               "source": "Marine Regions Maritime Boundaries v12 — EEZ (200NM), geo.vliz.be WFS, simplified 0.004°", "official": True,
+        code = f"{iso}-{L['suffix']}"
+        doc = {"code": code, "name": rec["geoname"] or f"{iso} {L['label']}", "authority": AUTHORITIES.get(iso, f"{rec['sovereign'] or iso} maritime authority"),
+               "country": iso, "zone_type": L["zone_type"], "zone_label": L["label"], "geometry": rec["geometry"], "active": True,
+               "source": f"Marine Regions Maritime Boundaries v12 — {L['label']}, geo.vliz.be WFS, simplified 0.004°", "official": True,
                "mrgid": rec["mrgid"], "pol_type": rec["pol_type"], "area_km2": rec["area_km2"], "imported_at": now, "updated_at": now}
         existing = await db.jurisdictions.find_one({"code": code})
         try:
@@ -95,7 +106,7 @@ async def handle_import_eez(job):
                 continue
         zid = (existing or await db.jurisdictions.find_one({"code": code}))["id"]
         await audit("jurisdiction", zid, "jurisdiction.imported", {"code": code, "mrgid": rec["mrgid"], "vertices": rec["vertices"]}, actor)
-        imported.append({"iso3": iso, "code": code, "name": doc["name"], "vertices": rec["vertices"], "area_km2": rec["area_km2"]})
+        imported.append({"iso3": iso, "layer": layer, "code": code, "name": doc["name"], "zone_type": L["zone_type"], "vertices": rec["vertices"], "area_km2": rec["area_km2"]})
         await job_log(job["id"], f"{iso}: imported {doc['name']} ({rec['vertices']} vertices, {rec['area_km2']} km²)")
         await asyncio.sleep(0.3)
     if replace_demo and imported:

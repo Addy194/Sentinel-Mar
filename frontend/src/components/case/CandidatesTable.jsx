@@ -35,6 +35,7 @@ export const CandidatesTable = ({ candidates, selected, onSelect }) => {
                 </div>
               </div>
               <StatusBadge status={c.status} testId={`candidate-status-${c.mmsi}`} />
+              {c.zone && <span data-testid={`candidate-zone-${c.mmsi}`} title={`${c.zone.name} · ${c.zone.authority}`} className="ml-1 rounded px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider" style={{ color: "#38BDF8", border: "1px solid rgba(56,189,248,0.5)" }}>{c.zone.code} · {c.zone.zone_label}</span>}
               <button className="text-slate-400" data-testid={`score-breakdown-toggle-${c.mmsi}`}>{isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</button>
             </div>
             {isOpen && (

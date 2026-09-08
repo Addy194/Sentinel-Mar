@@ -213,6 +213,14 @@ async def handle_correlate(job):
         n = await notify_alert(alert, case)
         await job_log(job["id"], f"high-confidence alert raised · email {n['status']} ({n['sent']}/{len(n['recipients'])})")
     watch = {w["mmsi"]: w for w in await db.watchlist.find({"active": True}, {"_id": 0}).to_list(1000)}
+    from jurisdiction import resolve_point_zones
+    for c in result["candidates"]:
+        cf = c["evidence"].get("closest_fix") or {}
+        if cf.get("lat") is not None:
+            zs = await resolve_point_zones(cf["lat"], cf["lon"])
+            c["zones"] = zs
+            c["zone"] = zs[0] if zs else None
+    await db.correlation_results.update_one({"id": doc["id"]}, {"$set": {"candidates": result["candidates"]}})
     hits = [c for c in result["candidates"] if c["mmsi"] in watch]
     for c in hits:
         w = watch[c["mmsi"]]

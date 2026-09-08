@@ -7,7 +7,15 @@ from geo import validate_polygon
 from models import new_id
 
 ZONE_TYPES = ["eez", "territorial", "port_state", "custom"]
-TYPE_PRIORITY = {"port_state": 0, "territorial": 1, "eez": 2, "custom": 3}
+TYPE_PRIORITY = {"port_state": 0, "territorial": 1, "contiguous": 2, "eez": 3, "custom": 4}
+ZONE_LABELS = {"territorial": "Territorial Sea (12 NM)", "contiguous": "Contiguous Zone (24 NM)", "eez": "Exclusive Economic Zone (200 NM)", "port_state": "Port state waters", "custom": "Custom zone"}
+
+
+async def resolve_point_zones(lat: float, lon: float):
+    """Zones containing a point (most specific first) — used to tag vessel positions."""
+    zones = await db.jurisdictions.find({"active": True, "geometry": {"$geoIntersects": {"$geometry": {"type": "Point", "coordinates": [lon, lat]}}}}, {"_id": 0, "geometry": 0}).to_list(50)
+    zones.sort(key=lambda z: TYPE_PRIORITY.get(z["zone_type"], 9))
+    return [{"code": z["code"], "name": z["name"], "zone_type": z["zone_type"], "zone_label": ZONE_LABELS.get(z["zone_type"], z["zone_type"]), "country": z.get("country"), "authority": z["authority"]} for z in zones]
 
 DEMO_ZONES = [
     {"code": "GBR-EEZ", "name": "United Kingdom EEZ (demo, simplified)", "authority": "UK Maritime & Coastguard Agency", "country": "GB", "zone_type": "eez",
@@ -48,7 +56,7 @@ async def resolve_jurisdictions(geometry: dict, centroid: dict):
             continue
         overlap = zg.intersection(poly).area / poly.area if poly.area else 0.0
         out.append({"id": z["id"], "code": z["code"], "name": z["name"], "authority": z["authority"], "country": z.get("country"),
-                    "zone_type": z["zone_type"], "contains_centroid": zg.contains(cpt), "overlap_fraction": round(overlap, 3)})
+                    "zone_type": z["zone_type"], "zone_label": ZONE_LABELS.get(z["zone_type"], z["zone_type"]), "contains_centroid": zg.contains(cpt), "overlap_fraction": round(overlap, 3)})
     out.sort(key=lambda j: (not j["contains_centroid"], TYPE_PRIORITY.get(j["zone_type"], 9), -j["overlap_fraction"]))
     primary = out[0] if out and out[0]["contains_centroid"] else (out[0] if out else None)
     return out, primary

@@ -6,7 +6,7 @@ import { ArrowLeft, Download, Layers, FileText, Columns2, Globe2, Crosshair, Ima
 import { api, apiError, fmtTime, pct, hasRole } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { StatusBadge, BandBadge } from "@/components/StatusBadge";
-import { CaseMap } from "@/components/case/CaseMap";
+import { CaseMap, ZONE_STYLE } from "@/components/case/CaseMap";
 import { CandidatesTable } from "@/components/case/CandidatesTable";
 import { ReviewForm } from "@/components/case/ReviewForm";
 import { EvidenceTimeline } from "@/components/case/EvidenceTimeline";
@@ -39,6 +39,7 @@ export default function CaseDetail() {
   const [pdfBusy, setPdfBusy] = useState(false);
   const [zones, setZones] = useState(null);
   const [showZones, setShowZones] = useState(true);
+  const [zoneKinds, setZoneKinds] = useState({ territorial: true, contiguous: true, eez: true, port_state: true, custom: true });
   const [satMeta, setSatMeta] = useState(null);
   const [showSat, setShowSat] = useState(false);
   const [overlayMeta, setOverlayMeta] = useState(null);
@@ -112,12 +113,20 @@ export default function CaseDetail() {
   return (
     <div className="flex h-full overflow-hidden" data-testid="case-detail">
       <div className="relative flex-1">
-        <CaseMap geojson={geo} selected={selected} onSelect={setSelected} showTracks={showTracks} timeCursor={cursor} acquisitionTime={c.acquisition_time} zones={showZones ? zones : null} gibs={showSat && satMeta ? { layer: satMeta.basemaps[0], template: satMeta.gibs_template } : null}
+        <CaseMap geojson={geo} selected={selected} onSelect={setSelected} showTracks={showTracks} timeCursor={cursor} acquisitionTime={c.acquisition_time} zones={showZones ? zones : null} zoneKinds={zoneKinds} gibs={showSat && satMeta ? { layer: satMeta.basemaps[0], template: satMeta.gibs_template } : null}
           overlay={showOverlay && overlayUrl && overlayMeta ? { url: overlayUrl, bounds: overlayMeta.bounds, opacity: overlayOpacity } : null} fitTo={fitTo} highlight={highlight} asset={asset} />
         <div className="absolute left-3 top-3 z-[1000] flex items-center gap-2">
           <Link to="/" data-testid="back-to-dashboard" className="inline-flex items-center gap-1 rounded px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-wider text-slate-200" style={overlayBtn}><ArrowLeft size={12} /> Cases</Link>
           <button data-testid="map-toggle-ais-layer" onClick={() => setShowTracks(!showTracks)} className="inline-flex items-center gap-1 rounded px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-wider" style={{ ...overlayBtn, color: showTracks ? "#00F0FF" : "#94A3B8" }}><Layers size={12} /> AIS tracks</button>
           <button data-testid="map-toggle-zones-layer" onClick={() => setShowZones(!showZones)} className="inline-flex items-center gap-1 rounded px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-wider" style={{ ...overlayBtn, color: showZones ? "#00F0FF" : "#94A3B8" }}><Layers size={12} /> Zones</button>
+          {showZones && (
+            <span className="inline-flex items-center gap-1 rounded px-1.5 py-1" style={overlayBtn} data-testid="zone-kind-toggles">
+              {[["territorial", "12 NM"], ["contiguous", "24 NM"], ["eez", "EEZ"]].map(([k, l]) => (
+                <button key={k} data-testid={`zone-kind-${k}`} onClick={() => setZoneKinds({ ...zoneKinds, [k]: !zoneKinds[k] })} className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider" style={{ color: zoneKinds[k] ? ZONE_STYLE[k].color : "#64748B", background: zoneKinds[k] ? `${ZONE_STYLE[k].color}22` : "transparent" }}>
+                  <span className="inline-block h-0 w-3 border-t-2" style={{ borderColor: zoneKinds[k] ? ZONE_STYLE[k].color : "#64748B", borderStyle: ZONE_STYLE[k].dashArray ? "dashed" : "solid" }} />{l}
+                </button>))}
+            </span>
+          )}
           <button data-testid="map-toggle-satellite-layer" onClick={() => setShowSat(!showSat)} title="NASA GIBS VIIRS true colour on acquisition date" className="inline-flex items-center gap-1 rounded px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-wider" style={{ ...overlayBtn, color: showSat ? "#00F0FF" : "#94A3B8" }}><Globe2 size={12} /> Satellite</button>
           <button data-testid="btn-export-geojson" onClick={exportGeo} className="inline-flex items-center gap-1 rounded px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-wider text-slate-200" style={overlayBtn}><Download size={12} /> GeoJSON</button>
           <button data-testid="btn-export-pdf" disabled={pdfBusy} onClick={exportPdf} className="inline-flex items-center gap-1 rounded px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-wider disabled:opacity-50" style={{ ...overlayBtn, color: "#FFB703" }}><FileText size={12} /> {pdfBusy ? "Building…" : "Evidence PDF"}</button>
@@ -161,8 +170,8 @@ export default function CaseDetail() {
             </div>
           </div>
           <div className="mt-2 flex flex-wrap gap-1.5">
-            {c.primary_jurisdiction && <span data-testid="case-jurisdiction-chip" title={c.primary_jurisdiction.name} className="rounded px-1.5 py-0.5 font-mono text-[10px] text-cyan-300" style={{ background: "rgba(0,240,255,0.08)", border: "1px solid rgba(0,240,255,0.35)" }}>⚖ {c.primary_jurisdiction.code} · {c.primary_jurisdiction.authority}</span>}
-            {c.jurisdictions?.filter((z) => z.code !== c.primary_jurisdiction?.code).map((z) => <span key={z.code} data-testid={`case-jurisdiction-other-${z.code}`} className="rounded px-1.5 py-0.5 font-mono text-[10px] text-slate-400" style={{ border: "1px solid var(--border-highlight)" }}>also {z.code} ({Math.round(z.overlap_fraction * 100)}%)</span>)}
+            {c.primary_jurisdiction && <span data-testid="case-jurisdiction-chip" title={c.primary_jurisdiction.name} className="rounded px-1.5 py-0.5 font-mono text-[10px] text-cyan-300" style={{ background: "rgba(0,240,255,0.08)", border: "1px solid rgba(0,240,255,0.35)" }}>⚖ {c.primary_jurisdiction.code} · {c.primary_jurisdiction.zone_label || c.primary_jurisdiction.zone_type} · {c.primary_jurisdiction.authority}</span>}
+            {c.jurisdictions?.filter((z) => z.code !== c.primary_jurisdiction?.code).map((z) => <span key={z.code} data-testid={`case-jurisdiction-other-${z.code}`} className="rounded px-1.5 py-0.5 font-mono text-[10px] text-slate-400" style={{ border: "1px solid var(--border-highlight)" }}>also {z.code} · {z.zone_label || z.zone_type} ({Math.round(z.overlap_fraction * 100)}%)</span>)}
             {!c.primary_jurisdiction && <span data-testid="case-jurisdiction-none" className="rounded px-1.5 py-0.5 font-mono text-[10px] text-slate-500" style={{ border: "1px solid var(--border-highlight)" }}>jurisdiction unassigned</span>}
             {spill?.quality_flags?.map((f) => <span key={f} data-testid={`spill-flag-${f}`} className={`rounded px-1.5 py-0.5 font-mono text-[10px] ${f === "experimental_detector" ? "text-rose-200" : "text-amber-300"}`} style={f === "experimental_detector" ? { background: "rgba(255,42,109,0.15)", border: "1px dashed rgba(255,42,109,0.7)" } : { background: "rgba(255,183,3,0.12)", border: "1px solid rgba(255,183,3,0.4)" }}>{f === "experimental_detector" ? "⚠ EXPERIMENTAL dark-spot detector" : f}</span>)}
             {cands?.degraded && <span data-testid="degraded-flag" className="rounded px-1.5 py-0.5 font-mono text-[10px] text-purple-300" style={{ background: "rgba(157,78,221,0.12)", border: "1px solid rgba(157,78,221,0.4)" }}>degraded: no drift inputs</span>}

@@ -16,6 +16,7 @@ router = APIRouter()
 class ImportRequest(BaseModel):
     iso3: List[str] = DEFAULT_ISO3
     replace_demo: bool = True
+    layers: List[str] = ["eez"]
 
 
 @router.post("/jurisdictions/import/marine-regions", status_code=202)
@@ -23,7 +24,9 @@ async def import_marine_regions(body: ImportRequest, user=Depends(require_role("
     bad = [i for i in body.iso3 if len(i.strip()) != 3]
     if bad or not body.iso3:
         raise HTTPException(400, "iso3 must be a non-empty list of 3-letter ISO codes")
-    job = await enqueue("import_eez", {"iso3": body.iso3, "replace_demo": body.replace_demo}, user["email"])
+    if any(l not in ("eez", "eez_24nm", "eez_12nm") for l in body.layers) or not body.layers:
+        raise HTTPException(400, "layers must be a non-empty subset of eez, eez_24nm, eez_12nm")
+    job = await enqueue("import_eez", {"iso3": body.iso3, "replace_demo": body.replace_demo, "layers": body.layers}, user["email"])
     await audit("jurisdiction", "import", "jurisdiction.import_requested", {"iso3": body.iso3, "job_id": job["id"]}, user["email"])
     return clean(job)
 

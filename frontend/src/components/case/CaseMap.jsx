@@ -12,6 +12,14 @@ const FitTo = ({ bounds }) => {
 };
 
 const RANK_COLORS = ["#FF2A6D", "#FFB703", "#00F0FF", "#9D4EDD", "#38BDF8", "#10B981"];
+export const ZONE_STYLE = {
+  territorial: { color: "#FF6B00", weight: 2.2, opacity: 0.9, dashArray: null, fillColor: "#FF6B00" },
+  contiguous: { color: "#FFB703", weight: 1.6, opacity: 0.85, dashArray: "8,5", fillColor: "#FFB703" },
+  eez: { color: "#38BDF8", weight: 1.2, opacity: 0.7, dashArray: "2,6", fillColor: "#38BDF8" },
+  port_state: { color: "#10B981", weight: 1.4, opacity: 0.8, dashArray: "1,4", fillColor: "#10B981" },
+  custom: { color: "#94A3B8", weight: 1, opacity: 0.6, dashArray: "4,4", fillColor: "#94A3B8" },
+};
+export const ZONE_LABEL = { territorial: "Territorial Sea (12 NM)", contiguous: "Contiguous Zone (24 NM)", eez: "EEZ (200 NM)", port_state: "Port state waters", custom: "Custom zone" };
 const rankColorFor = (rank) => RANK_COLORS[Math.min((rank || 1) - 1, RANK_COLORS.length - 1)];
 
 const FitBounds = ({ geojson }) => {
@@ -37,7 +45,7 @@ export const trackPositionAt = (feature, t) => {
   return { lat: coords[i][1] + (coords[i + 1][1] - coords[i][1]) * f, lon: coords[i][0] + (coords[i + 1][0] - coords[i][0]) * f, idx: i, gap: ts[i + 1] - ts[i] > 2 * 3600e3 };
 };
 
-export const CaseMap = ({ geojson, selected, onSelect, showTracks = true, showCorridor = true, timeCursor = null, acquisitionTime = null, zones = null, sideColors = null, gibs = null, overlay = null, fitTo = null, highlight = null, asset = null }) => {
+export const CaseMap = ({ geojson, selected, onSelect, showTracks = true, showCorridor = true, timeCursor = null, acquisitionTime = null, zones = null, zoneKinds = null, sideColors = null, gibs = null, overlay = null, fitTo = null, highlight = null, asset = null }) => {
   const colorFor = (rank, side) => (sideColors && side ? sideColors[side] : RANK_COLORS[Math.min((rank || 1) - 1, RANK_COLORS.length - 1)]);
   const layers = useMemo(() => {
     const f = geojson?.features || [];
@@ -70,9 +78,10 @@ export const CaseMap = ({ geojson, selected, onSelect, showTracks = true, showCo
       )}
       <FitBounds geojson={geojson} />
       {zones?.features?.length > 0 && (
-        <GeoJSON key={`zones-${zones.features.length}`} data={zones}
-          style={(ft) => ({ color: ft.properties.zone_type === "port_state" ? "#FFB703" : "#38BDF8", weight: 1, opacity: 0.55, fillOpacity: 0.04, dashArray: "2,6" })}
-          onEachFeature={(ft, layer) => layer.bindTooltip(`${ft.properties.code} · ${ft.properties.authority}`, { sticky: true })} />
+        <GeoJSON key={`zones-${zones.features.length}-${zoneKinds ? Object.values(zoneKinds).join("") : ""}`} data={zones}
+          filter={(ft) => !zoneKinds || zoneKinds[ft.properties.zone_type] !== false}
+          style={(ft) => ({ ...ZONE_STYLE[ft.properties.zone_type] || ZONE_STYLE.custom, fillOpacity: 0.05 })}
+          onEachFeature={(ft, layer) => layer.bindTooltip(`${ft.properties.name || ft.properties.code} · ${ZONE_LABEL[ft.properties.zone_type] || ft.properties.zone_type} · ${ft.properties.authority}`, { sticky: true })} />
       )}
       {showCorridor && layers.corridor.map((f, i) => (
         <GeoJSON key={`c${i}`} data={f} style={{ color: "#00F0FF", weight: 1, dashArray: "6,6", fillColor: "#00F0FF", fillOpacity: 0.05 }} />

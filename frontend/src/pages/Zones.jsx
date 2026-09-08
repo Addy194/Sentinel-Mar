@@ -6,7 +6,9 @@ import { api, apiError, hasRole, pollJob } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { ZoneRules } from "@/components/zones/ZoneRules";
 
-const TYPE_COLOR = { eez: "#00F0FF", territorial: "#38BDF8", port_state: "#FFB703", custom: "#9D4EDD" };
+const TYPE_COLOR = { territorial: "#FF6B00", contiguous: "#FFB703", eez: "#38BDF8", port_state: "#10B981", custom: "#9D4EDD" };
+const TYPE_LABEL = { territorial: "Territorial Sea (12 NM)", contiguous: "Contiguous Zone (24 NM)", eez: "EEZ (200 NM)", port_state: "Port state", custom: "Custom" };
+const TYPE_DASH = { territorial: null, contiguous: "8,5", eez: "2,6", port_state: "1,4", custom: "4,4" };
 const inputCls = "w-full rounded border bg-slate-900/60 px-2.5 py-1.5 font-mono text-xs text-slate-100 outline-none focus:border-cyan-400/60";
 const bd = { borderColor: "var(--border-highlight)" };
 const SAMPLE = JSON.stringify({ type: "Polygon", coordinates: [[[5.0, 52.0], [6.0, 52.0], [6.0, 52.6], [5.0, 52.6], [5.0, 52.0]]] });
@@ -17,6 +19,7 @@ export default function Zones() {
   const [f, setF] = useState({ code: "", name: "", authority: "", country: "", zone_type: "eez", geometry: SAMPLE });
   const [busy, setBusy] = useState(false);
   const [iso, setIso] = useState("NLD, GBR, DEU, DNK, BEL, NOR");
+  const [importLayers, setImportLayers] = useState(["eez"]);
   const [importing, setImporting] = useState(null);
   const admin = hasRole(user, "admin");
   const load = () => api.get("/jurisdictions").then((r) => setZones(r.data)).catch((e) => toast.error(apiError(e)));
@@ -26,7 +29,7 @@ export default function Zones() {
     setImporting("queued…");
     try {
       const list = iso.split(/[,\s]+/).map((s) => s.trim().toUpperCase()).filter(Boolean);
-      const { data: job } = await api.post("/jurisdictions/import/marine-regions", { iso3: list, replace_demo: true });
+      const { data: job } = await api.post("/jurisdictions/import/marine-regions", { iso3: list, replace_demo: true, layers: importLayers });
       const done = await pollJob(job.id, (j) => setImporting(`${j.status} · ${j.logs[j.logs.length - 1]?.msg || ""}`));
       if (done.status === "succeeded") toast.success(`Imported ${done.result.imported.length} official EEZ boundaries; ${done.result.cases_resolved} cases re-resolved${done.result.failed.length ? ` · failed: ${done.result.failed.map((f) => f.iso3).join(", ")}` : ""}`);
       else toast.error(`Import failed: ${done.error}`);
@@ -51,7 +54,7 @@ export default function Zones() {
         <MapContainer center={[54.0, 4.0]} zoom={6} className="h-full w-full">
           <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="&copy; OpenStreetMap contributors" className="dark-tiles" updateWhenIdle updateWhenZooming={false} keepBuffer={0} />
           <GeoJSON key={zones.map((z) => z.id + z.active).join("|")} data={geojson}
-            style={(ft) => ({ color: TYPE_COLOR[ft.properties.zone_type] || "#94A3B8", weight: 1.5, fillOpacity: 0.12, dashArray: ft.properties.zone_type === "port_state" ? "4,4" : null })}
+            style={(ft) => ({ color: TYPE_COLOR[ft.properties.zone_type] || "#94A3B8", weight: ft.properties.zone_type === "territorial" ? 2.2 : 1.5, fillOpacity: 0.1, dashArray: TYPE_DASH[ft.properties.zone_type] ?? null })}
             onEachFeature={(ft, layer) => layer.bindTooltip(`${ft.properties.code} · ${ft.properties.authority}`, { sticky: true, className: "zone-tip" })} />
         </MapContainer>
         <div className="absolute left-3 top-3 z-[1000] rounded px-3 py-2 text-[11px]" style={{ background: "rgba(10,14,23,0.85)", border: "1px solid var(--border-default)", backdropFilter: "blur(12px)" }}>
@@ -67,7 +70,7 @@ export default function Zones() {
               <div className="flex items-center gap-2">
                 <span className="h-2.5 w-2.5 rounded-sm" style={{ background: TYPE_COLOR[z.zone_type] }} />
                 <span className="font-mono text-cyan-300">{z.code}</span>
-                <span className="font-mono text-[10px] uppercase tracking-wider text-slate-500">{z.zone_type}</span>
+                <span className="font-mono text-[10px] uppercase tracking-wider text-slate-500">{TYPE_LABEL[z.zone_type] || z.zone_type}</span>
                 {!z.active && <span className="font-mono text-[10px] text-slate-500">inactive</span>}
                 {admin && (
                   <span className="ml-auto flex items-center gap-1">
@@ -88,6 +91,11 @@ export default function Zones() {
             <div className="mb-2 flex items-center gap-2"><Globe size={14} color="#00F0FF" /><h2 className="font-display font-semibold">Import official EEZ boundaries</h2></div>
             <p className="mb-2 text-[11px] text-slate-400">Marine Regions Maritime Boundaries v12 (200 NM EEZ) via WFS, simplified for map performance. Replaces the demo boxes and re-resolves every case.</p>
             <input data-testid="zone-import-iso-input" className={inputCls} style={bd} value={iso} onChange={(e) => setIso(e.target.value)} placeholder="ISO3 codes, comma separated" />
+            <div className="mt-2 flex flex-wrap items-center gap-3 font-mono text-[10px]" data-testid="zone-import-layers">
+              {[["eez", "EEZ 200 NM"], ["eez_24nm", "Contiguous 24 NM"], ["eez_12nm", "Territorial 12 NM"]].map(([k, l]) => (
+                <label key={k} className="flex items-center gap-1 text-slate-300"><input type="checkbox" data-testid={`zone-import-layer-${k}`} checked={importLayers.includes(k)} onChange={(e) => setImportLayers(e.target.checked ? [...importLayers, k] : importLayers.filter((x) => x !== k))} /> {l}</label>))}
+              <button data-testid="zone-import-india-preset" onClick={() => { setIso("IND"); setImportLayers(["eez", "eez_24nm", "eez_12nm"]); }} className="rounded border px-2 py-0.5 uppercase tracking-wider text-amber-300" style={{ borderColor: "rgba(255,183,3,0.5)" }}>India · all 3 zones</button>
+            </div>
             <div className="mt-2 flex items-center gap-2">
               <button data-testid="btn-import-eez" disabled={!!importing} onClick={importOfficial} className="inline-flex items-center gap-1.5 rounded bg-cyan-400 px-3 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-wider text-slate-950 hover:bg-cyan-300 disabled:opacity-50"><Globe size={12} /> {importing ? "Importing…" : "Import from Marine Regions"}</button>
               {importing && <span className="font-mono text-[10px] text-cyan-300 truncate" data-testid="zone-import-status">{importing}</span>}
