@@ -107,6 +107,11 @@ POST/GET scenes, POST scenes/{id}/detect (mock), POST/GET spill-observations, PO
 - deployment_agent: PASS (no findings). Fixed: `.gitignore` no longer ignores `.env` files (platform requirement); vessel-profile queries capped (5000 fixes / 500 results / capped `$in`, `fixes_analysed` reported); candidates watchlist lookup scoped by `$in` candidate MMSIs.
 - Tested: iteration_13 regression on vessel profile + candidates watchlist badge.
 
+## Implemented (iteration 14)
+- **Dark-vessel detection (EXPERIMENTAL)** `dark_vessel.py`: CA-CFAR bright-target search (15×15 window, 3×3 guard, 4σ) on the Sentinel-1 quicklook → compact blobs; AIS cross-check ±30 min within 3 km; unmatched → `dark_candidate` with dead-reckoned escape cue (slick major axis away from spill, 12 kn, 1–6 h). `POST /cases/{id}/dark-vessels/scan?radius_km`, `GET /cases/{id}/dark-vessels`; scans in `dark_vessel_scans`, summary on `case.dark_vessels`, audited. UI panel under Candidates + red boxes/dashed trajectories on case map. Needs real SAR quicklook (400 otherwise).
+- **Evidence Vault** `vault.py` + `GET /archive/{id}/vault`: structured legal/ecological evidence (ruling, penalties, cleanup cost, compensation, ecological impact, source links) for the 12 seeded spills; RECONSTRUCTED day-by-day footprint frames (√t spread then weathering). Page `/archive/:id` with mini-map replay slider/play, GIBS optical before/after toggle, evidence side panel.
+- **District alert recipients**: `icg_districts.recipients[]` via admin PUT; `recipients_for_alerts(icg_code)` puts district desk emails first; Zones admin edit form field. **Email delivery still NOT CONFIGURED** (no Resend key/sender supplied) — configure under Users → Email settings.
+
 ## Backlog (prioritized)
 - P1: Resend + aisstream keys; U-Net SAR segmentation; OpenDrift forward drift; socio-economic vulnerability (Overpass POIs); WhatsApp citizen reports; i18n (Hindi/Tamil/Marathi); outbound port-authority webhooks (HMAC); ErrorBoundary around CaseDetail; exponential lockout backoff.
 - P2: Additional met/ocean providers, replay testing harness, observability/metrics, SAR segmentation model once labeled data exists, separate worker process (Celery/Redis).

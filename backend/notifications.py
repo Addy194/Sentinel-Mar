@@ -29,11 +29,16 @@ def alert_html(alert: dict, case: dict) -> str:
 </table></td></tr></table>"""
 
 
-async def recipients_for_alerts() -> list:
+async def recipients_for_alerts(icg_code: str = None) -> list:
+    """District desk recipients (ICG) first, then supervisors/admins, then admin-configured extra recipients."""
     cfg = await get_config()
     users = await db.users.find({"active": True, "role": {"$in": ["supervisor", "admin"]}, "notify_alerts": {"$ne": False}}, {"_id": 0, "email": 1}).to_list(500)
+    district = []
+    if icg_code:
+        d = await db.icg_districts.find_one({"code": icg_code}, {"_id": 0, "recipients": 1})
+        district = list((d or {}).get("recipients") or [])
     seen, out = set(), []
-    for em in [u["email"] for u in users] + list(cfg.get("alert_recipients") or []):
+    for em in district + [u["email"] for u in users] + list(cfg.get("alert_recipients") or []):
         em = em.lower().strip()
         if em and em not in seen:
             seen.add(em)
@@ -45,7 +50,7 @@ async def notify_alert(alert: dict, case: dict) -> dict:
     """Email supervisors/admins about an alert. Never raises; records outcome on the alert."""
     cfg = await get_config()
     now = datetime.now(timezone.utc)
-    to = await recipients_for_alerts()
+    to = await recipients_for_alerts(((case.get("icg") or alert.get("icg")) or {}).get("code"))
     subject = f"[SentinelMar] {alert['severity'].upper()} alert — {case['case_number']}" + (f" · {case['icg']['code']}" if case.get("icg") else "")
     if not cfg["api_key"] or not cfg["enabled"] or not cfg.get("alerts_enabled", True):
         summary = {"status": "not_configured", "recipients": to, "sent": 0, "failed": 0, "at": now, "reason": "email delivery not configured or alert emails disabled"}

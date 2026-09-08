@@ -19,6 +19,7 @@ import { DetectorFeedback } from "@/components/case/DetectorFeedback";
 import { Playbook } from "@/components/case/Playbook";
 import { Precedents } from "@/components/case/Precedents";
 import { Vulnerability } from "@/components/case/Vulnerability";
+import { DarkVessels } from "@/components/case/DarkVessels";
 import { AssetSearch, assetBounds } from "@/components/map/AssetSearch";
 import { useLive } from "@/context/LiveFeed";
 
@@ -34,6 +35,7 @@ export default function CaseDetail() {
   const [evidence, setEvidence] = useState(null);
   const [config, setConfig] = useState(null);
   const [tab, setTab] = useState("candidates");
+  const [darkScan, setDarkScan] = useState(null);
   const [selected, setSelected] = useState(null);
   const [showTracks, setShowTracks] = useState(true);
   const [cursor, setCursor] = useState(null);
@@ -114,7 +116,7 @@ export default function CaseDetail() {
   return (
     <div className="flex h-full overflow-hidden" data-testid="case-detail">
       <div className="relative flex-1">
-        <CaseMap geojson={geo} selected={selected} onSelect={setSelected} showTracks={showTracks} timeCursor={cursor} acquisitionTime={c.acquisition_time} zones={showZones ? zones : null} zoneKinds={zoneKinds} gibs={showSat && satMeta ? { layer: satMeta.basemaps[0], template: satMeta.gibs_template } : null}
+        <CaseMap darkVessels={darkScan?.targets} geojson={geo} selected={selected} onSelect={setSelected} showTracks={showTracks} timeCursor={cursor} acquisitionTime={c.acquisition_time} zones={showZones ? zones : null} zoneKinds={zoneKinds} gibs={showSat && satMeta ? { layer: satMeta.basemaps[0], template: satMeta.gibs_template } : null}
           overlay={showOverlay && overlayUrl && overlayMeta ? { url: overlayUrl, bounds: overlayMeta.bounds, opacity: overlayOpacity } : null} fitTo={fitTo} highlight={highlight} asset={asset} />
         <div className="absolute left-3 top-3 z-[1000] flex items-center gap-2">
           <Link to="/" data-testid="back-to-dashboard" className="inline-flex items-center gap-1 rounded px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-wider text-slate-200" style={overlayBtn}><ArrowLeft size={12} /> Cases</Link>
@@ -192,6 +194,7 @@ export default function CaseDetail() {
             <>
               <p className="px-4 pt-3 text-[11px] text-slate-500" data-testid="candidates-disclaimer">{cands?.disclaimer || "Ranked candidates are decision-support output, not a legal determination."}</p>
               <CandidatesTable candidates={cands?.candidates} selected={selected} onSelect={setSelected} />
+              <DarkVessels caseId={id} onScan={setDarkScan} />
             </>
           )}
           {tab === "review" && <div className="space-y-4"><DetectorFeedback caseId={id} source={c.source} onSaved={load} /><ReviewForm caseId={id} candidates={cands?.candidates} reasonCodes={config?.reason_codes} resultVersion={cands?.version} onSaved={load} /></div>}

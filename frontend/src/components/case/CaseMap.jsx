@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo } from "react";
-import { MapContainer, TileLayer, GeoJSON, CircleMarker, Polyline, Popup, Tooltip, ImageOverlay, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, GeoJSON, CircleMarker, Polyline, Popup, Tooltip, ImageOverlay, Rectangle, useMap } from "react-leaflet";
 import L from "leaflet";
 import { fmtTime } from "@/lib/api";
 import { GibsLayer } from "@/components/map/GibsLayer";
@@ -42,6 +42,10 @@ const trackOpts = (color, dim, interpolated) => ({ color, weight: dim ? 1.5 : in
 const headOpts = (fill, dim, gap) => ({ color: "#F8FAFC", fillColor: fill, fillOpacity: dim ? 0.3 : 1, weight: 2, dashArray: gap ? "3,3" : null, opacity: dim ? 0.3 : 1 });
 const fixOpts = (color, isSelected) => ({ color, fillColor: color, fillOpacity: isSelected ? 1 : 0.7, weight: 2 });
 const bpOpts = (fill, dimmed) => ({ color: "#F8FAFC", fillColor: fill, fillOpacity: 0.9, weight: 1, dashArray: "2,2", opacity: dimmed ? 0.2 : 0.9 });
+const DARK_BOX = { color: "#FF2A6D", weight: 2, fillOpacity: 0.08, fillColor: "#FF2A6D" };
+const AIS_BOX = { color: "#94A3B8", weight: 1, fillOpacity: 0.03, dashArray: "2,3" };
+const DARK_TRAJ = { color: "#FF2A6D", weight: 1.5, dashArray: "6,6", opacity: 0.8 };
+const darkBounds = (t) => { const [w, s, e, n] = t.bbox; const pad = 0.01; return [[s - pad, w - pad], [n + pad, e + pad]]; };
 
 const FitBounds = ({ geojson }) => {
   const map = useMap();
@@ -66,7 +70,7 @@ export const trackPositionAt = (feature, t) => {
   return { lat: coords[i][1] + (coords[i + 1][1] - coords[i][1]) * f, lon: coords[i][0] + (coords[i + 1][0] - coords[i][0]) * f, idx: i, gap: ts[i + 1] - ts[i] > 2 * 3600e3 };
 };
 
-export const CaseMap = ({ geojson, selected, onSelect, showTracks = true, showCorridor = true, timeCursor = null, acquisitionTime = null, zones = null, zoneKinds = null, sideColors = null, gibs = null, overlay = null, fitTo = null, highlight = null, asset = null }) => {
+export const CaseMap = ({ geojson, selected, onSelect, showTracks = true, showCorridor = true, timeCursor = null, acquisitionTime = null, zones = null, zoneKinds = null, sideColors = null, gibs = null, overlay = null, fitTo = null, highlight = null, asset = null, darkVessels = null }) => {
   const colorFor = useCallback((rank, side) => (sideColors && side ? sideColors[side] : rankColorFor(rank)), [sideColors]);
   const selectHandler = useCallback((mmsi) => ({ click: () => onSelect?.(mmsi) }), [onSelect]);
   const zoneFilter = useCallback((ft) => !zoneKinds || zoneKinds[ft.properties.zone_type] !== false, [zoneKinds]);
@@ -100,6 +104,14 @@ export const CaseMap = ({ geojson, selected, onSelect, showTracks = true, showCo
         </CircleMarker>
       )}
       <FitBounds geojson={geojson} />
+      {darkVessels?.map((t, i) => (
+        <Rectangle key={`dv-${t.id}`} bounds={darkBounds(t)} pathOptions={t.dark_candidate ? DARK_BOX : AIS_BOX}>
+          <Tooltip sticky><span data-testid={`dark-box-tip-${t.id}`}>{t.dark_candidate ? `DARK VESSEL CANDIDATE D${darkVessels.filter((x) => x.dark_candidate).indexOf(t) + 1} — no AIS ≤ 3 km` : `SAR target matched to AIS ${t.matched_name || t.matched_mmsi}`} · SNR {t.snr}σ · ≈{t.est_length_m} m</span></Tooltip>
+        </Rectangle>
+      ))}
+      {darkVessels?.filter((t) => t.dark_candidate && t.trajectory).map((t) => (
+        <Polyline key={`dvt-${t.id}`} positions={[[t.lat, t.lon], ...t.trajectory.map((p) => [p.lat, p.lon])]} pathOptions={DARK_TRAJ}><Tooltip sticky>Dead-reckoned escape cue · {t.escape_heading_deg}° @ {t.assumed_speed_kn} kn (1–6 h)</Tooltip></Polyline>
+      ))}
       {zones?.features?.length > 0 && (
         <GeoJSON key={`zones-${zones.features.length}-${zoneKinds ? Object.values(zoneKinds).join("") : ""}`} data={zones}
           filter={zoneFilter} style={zoneStyle} onEachFeature={zoneTooltip} />

@@ -65,6 +65,18 @@ class SpillIn(BaseModel):
     country: Optional[str] = None
 
 
+@router.get("/archive/{entry_id}/vault")
+async def vault(entry_id: str, user=Depends(get_current_user)):
+    from vault import VAULT, reconstruct_frames
+    e = await db.historical_spills.find_one({"id": entry_id}, {"_id": 0, "location": 0})
+    if not e:
+        raise HTTPException(404, "entry not found")
+    e["date"] = to_utc(e["date"])
+    v = VAULT.get(e["name"])
+    return clean({"entry": e, "evidence": v, "frames": reconstruct_frames(e), "reconstructed": True,
+                  "note": "Footprint replay is RECONSTRUCTED from recorded volume/duration (√t spreading, then weathering) — illustrative, not an archived SAR footprint. Legal/ecological facts summarised from the cited public sources; verify before citation."})
+
+
 @router.post("/archive", status_code=201)
 async def create_entry(body: SpillIn, user=Depends(require_role("supervisor"))):
     try:

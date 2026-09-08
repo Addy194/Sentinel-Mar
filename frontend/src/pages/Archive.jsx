@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, Link } from "react-router-dom";
 import { toast } from "sonner";
 import { BookOpen, Plus } from "lucide-react";
 import { api, apiError, fmtTime, hasRole } from "@/lib/api";
@@ -42,7 +42,7 @@ export default function Archive() {
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3" data-testid="archive-list">
         {rows.map((r) => (
           <article key={r.id} data-testid={`archive-entry-${r.id}`} className="panel p-4 text-xs">
-            <div className="flex items-start gap-2"><BookOpen size={13} color="#38BDF8" className="mt-0.5 shrink-0" /><h2 className="font-display text-base font-semibold text-slate-100">{r.name}</h2></div>
+            <div className="flex items-start gap-2"><BookOpen size={13} color="#38BDF8" className="mt-0.5 shrink-0" /><h2 className="font-display text-base font-semibold text-slate-100">{r.name}</h2><Link to={`/archive/${r.id}`} data-testid={`archive-open-vault-${r.id}`} className="ml-auto shrink-0 rounded border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-cyan-300 hover:bg-cyan-400/10" style={bd}>Open case file</Link></div>
             <div className="mt-1 font-mono text-[10px] text-slate-500">{fmtTime(r.date).slice(0, 10)} · {r.country} · {r.lat}, {r.lon} · {r.volume_tonnes?.toLocaleString()} t · {r.oil_type}</div>
             <p className="mt-2 text-slate-300"><span className="text-slate-500">Cause:</span> {r.cause}</p>
             <p className="text-slate-300"><span className="text-slate-500">Source:</span> {r.vessel_facility}</p>

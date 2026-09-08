@@ -9,7 +9,7 @@ from starlette.middleware.cors import CORSMiddleware
 from db import db, client, ensure_indexes
 import jobs
 import services  # noqa: F401  (registers job handlers)
-from routers import ingest, cases, system, auth as auth_router, jurisdictions, watchlist, timeline, attachments, rules as rules_router, satellite, ais_live as ais_live_router, scene_watch as scene_watch_router, imagery, live, gazetteer, archive, prosecution, icg as icg_router, vulnerability as vulnerability_router
+from routers import ingest, cases, system, auth as auth_router, jurisdictions, watchlist, timeline, attachments, rules as rules_router, satellite, ais_live as ais_live_router, scene_watch as scene_watch_router, imagery, live, gazetteer, archive, prosecution, icg as icg_router, vulnerability as vulnerability_router, dark_vessel as dark_vessel_router
 from icg import seed_icg
 from vulnerability import seed_sites
 import ais_live
@@ -81,6 +81,7 @@ api.include_router(imagery.router)
 api.include_router(live.router)
 api.include_router(icg_router.router)
 api.include_router(vulnerability_router.router)
+api.include_router(dark_vessel_router.router)
 api.include_router(gazetteer.router)
 api.include_router(archive.router)
 api.include_router(prosecution.router)

@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -20,6 +20,7 @@ class DistrictUpdate(BaseModel):
     approximate: Optional[bool] = None
     note: Optional[str] = None
     source: Optional[str] = None
+    recipients: Optional[List[str]] = None
 
 
 @router.get("/icg/districts")
@@ -45,6 +46,8 @@ async def update_district(code: str, body: DistrictUpdate, user=Depends(require_
     if not d:
         raise HTTPException(404, "district not found")
     update = body.model_dump(exclude_none=True)
+    if "recipients" in update:
+        update["recipients"] = sorted({e.lower().strip() for e in update["recipients"] if "@" in e})
     if "geometry" in update:
         update["geometry"] = validate_polygon(update["geometry"]).__geo_interface__
         update.setdefault("approximate", False)
