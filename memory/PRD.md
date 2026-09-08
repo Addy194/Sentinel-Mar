@@ -103,6 +103,10 @@ POST/GET scenes, POST scenes/{id}/detect (mock), POST/GET spill-observations, PO
 - **ICG alert routing** (`icg.py`, `routers/icg.py`): 14 APPROXIMATE district sea-boxes across 5 regions (NW/W/E/NE/A&N), flagged `approximate`, admin PUT to replace with official geometry, `resolve-all`; cases get `icg`, all alert kinds carry `icg`, email subject/body include routing; case header chip, alert lines (Dashboard/Jobs), Zones page layer + admin panel (`IcgDistricts.jsx`).
 - **Shoreline vulnerability** (`vulnerability.py`): forward Lagrangian track 72 h + 24/48/72 h 2σ envelopes; 34 curated Indian sensitive sites seeded (`sensitive_sites`); ETA = first hour plume disc reaches site; priority = sensitivity × urgency × proximity; degraded (no forcing) → 60 km radius by distance. OSM Overpass enrichment as background job cached in `case_vulnerability_osm` (mirrors tried; **unreachable from preview pod → status failed, curated still shown**). Case tab "Vulnerability" (`Vulnerability.jsx`) with map + ranked table + enrich button; PDF section 10.
 
+## Implemented (iteration 13 — deployment readiness)
+- deployment_agent: PASS (no findings). Fixed: `.gitignore` no longer ignores `.env` files (platform requirement); vessel-profile queries capped (5000 fixes / 500 results / capped `$in`, `fixes_analysed` reported); candidates watchlist lookup scoped by `$in` candidate MMSIs.
+- Tested: iteration_13 regression on vessel profile + candidates watchlist badge.
+
 ## Backlog (prioritized)
 - P1: Resend + aisstream keys; U-Net SAR segmentation; OpenDrift forward drift; socio-economic vulnerability (Overpass POIs); WhatsApp citizen reports; i18n (Hindi/Tamil/Marathi); outbound port-authority webhooks (HMAC); ErrorBoundary around CaseDetail; exponential lockout backoff.
 - P2: Additional met/ocean providers, replay testing harness, observability/metrics, SAR segmentation model once labeled data exists, separate worker process (Celery/Redis).

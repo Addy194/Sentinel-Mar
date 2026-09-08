@@ -77,7 +77,8 @@ async def get_candidates(case_id: str, version: Optional[int] = None, include_tr
     if not include_tracks:
         for c in result["candidates"]:
             c.pop("track", None)
-    watch = {w["mmsi"]: w for w in await db.watchlist.find({"active": True}, {"_id": 0, "mmsi": 1, "reason": 1, "severity": 1, "id": 1}).to_list(1000)}
+    mmsis = [c["mmsi"] for c in result["candidates"]]
+    watch = {w["mmsi"]: w for w in await db.watchlist.find({"active": True, "mmsi": {"$in": mmsis}}, {"_id": 0, "mmsi": 1, "reason": 1, "severity": 1, "id": 1}).to_list(len(mmsis) or 1)}
     for c in result["candidates"]:
         c["watchlist"] = watch.get(c["mmsi"])
     result.pop("processing_log", None)

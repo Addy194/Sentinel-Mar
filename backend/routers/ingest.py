@@ -52,20 +52,25 @@ async def ais_csv_ingest(file: UploadFile = File(...), mapping: Optional[str] = 
     return {**summary, "filename": file.filename, "rows_total": len(rows), "row_errors": errors[:100], "row_error_count": len(errors), "mapping": m}
 
 
+MAX_PROFILE_FIXES, MAX_PROFILE_RESULTS = 5000, 500
+
+
 @router.get("/vessels/{mmsi}/profile")
 async def vessel_profile(mmsi: str, user=Depends(get_current_user)):
-    fixes = await db.ais_positions.find({"mmsi": mmsi}, {"_id": 0, "location": 0, "dedup_hash": 0}).sort("timestamp", 1).to_list(20000)
-    if not fixes:
+    total_fixes = await db.ais_positions.count_documents({"mmsi": mmsi})
+    if not total_fixes:
         raise HTTPException(404, "no AIS data for this MMSI")
+    fixes = await db.ais_positions.find({"mmsi": mmsi}, {"_id": 0, "location": 0, "dedup_hash": 0}).sort("timestamp", -1).limit(MAX_PROFILE_FIXES).to_list(MAX_PROFILE_FIXES)
+    fixes.reverse()
     latest = fixes[-1]
     gaps = sum(1 for a, b in zip(fixes, fixes[1:]) if (b["timestamp"] - a["timestamp"]).total_seconds() > 7200)
     flags = sorted({f for p in fixes for f in p.get("quality_flags", [])})
     names = sorted({p["vessel_name"] for p in fixes if p.get("vessel_name")})
-    results = await db.correlation_results.find({"candidates.mmsi": mmsi}, {"_id": 0, "case_id": 1, "version": 1, "created_at": 1, "candidates": 1, "overall_status": 1}).sort("version", -1).to_list(2000)
+    results = await db.correlation_results.find({"candidates.mmsi": mmsi}, {"_id": 0, "case_id": 1, "version": 1, "created_at": 1, "candidates": 1, "overall_status": 1}).sort("version", -1).limit(MAX_PROFILE_RESULTS).to_list(MAX_PROFILE_RESULTS)
     latest_by_case = {}
     for r in results:
         latest_by_case.setdefault(r["case_id"], r)
-    cases = await db.cases.find({"id": {"$in": list(latest_by_case)}}, {"_id": 0}).to_list(2000)
+    cases = await db.cases.find({"id": {"$in": list(latest_by_case)[:MAX_PROFILE_RESULTS]}}, {"_id": 0}).to_list(MAX_PROFILE_RESULTS)
     appearances = []
     for c in cases:
         r = latest_by_case[c["id"]]
@@ -82,7 +87,7 @@ async def vessel_profile(mmsi: str, user=Depends(get_current_user)):
         d["case_number"] = case_numbers.get(d["case_id"])
     return clean({
         "mmsi": mmsi, "vessel_name": latest.get("vessel_name"), "imo": latest.get("imo"), "vessel_type": latest.get("vessel_type"), "name_variants": names,
-        "ais_summary": {"fixes": len(fixes), "first_seen": fixes[0]["timestamp"], "last_seen": latest["timestamp"], "sources": sorted({p.get("source") for p in fixes if p.get("source")}),
+        "ais_summary": {"fixes": total_fixes, "fixes_analysed": len(fixes), "first_seen": fixes[0]["timestamp"], "last_seen": latest["timestamp"], "sources": sorted({p.get("source") for p in fixes if p.get("source")}),
                         "quality_flags": flags, "gaps_over_2h": gaps, "last_position": {"lat": latest["lat"], "lon": latest["lon"], "sog_kn": latest.get("sog_kn"), "cog_deg": latest.get("cog_deg")}},
         "summary": {"appearances": len(appearances), "probable_or_confirmed": sum(1 for a in appearances if a["candidate_status"] == "probable" or a["confirmed_this_vessel"]),
                     "confirmed": sum(1 for d in decisions if d["decision"] == "confirm"), "rejected": sum(1 for d in decisions if d["decision"] == "reject"),
