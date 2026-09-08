@@ -33,7 +33,7 @@ async def login(body: LoginRequest, request: Request, response: Response):
         raise HTTPException(403, "Account deactivated")
     await clear_failures(ident)
     token = create_access_token(user)
-    response.set_cookie("access_token", token, httponly=True, secure=True, samesite="none", max_age=ACCESS_HOURS * 3600, path="/")
+    response.set_cookie("access_token", token, httponly=True, secure=True, samesite="lax", max_age=ACCESS_HOURS * 3600, path="/")
     await db.users.update_one({"id": user["id"]}, {"$set": {"last_login": datetime.now(timezone.utc)}})
     await audit("user", user["id"], "auth.login", {"email": email}, email)
     return {"access_token": token, "token_type": "bearer", "user": clean(public_user(user))}
@@ -41,7 +41,7 @@ async def login(body: LoginRequest, request: Request, response: Response):
 
 @router.post("/auth/logout")
 async def logout(response: Response, user=Depends(get_current_user)):
-    response.delete_cookie("access_token", path="/")
+    response.delete_cookie("access_token", path="/", httponly=True, secure=True, samesite="lax")
     await audit("user", user["id"], "auth.logout", {}, user["email"])
     return {"ok": True}
 

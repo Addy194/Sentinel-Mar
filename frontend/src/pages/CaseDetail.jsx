@@ -18,10 +18,11 @@ import { BeforeAfter } from "@/components/case/BeforeAfter";
 import { DetectorFeedback } from "@/components/case/DetectorFeedback";
 import { Playbook } from "@/components/case/Playbook";
 import { Precedents } from "@/components/case/Precedents";
+import { Vulnerability } from "@/components/case/Vulnerability";
 import { AssetSearch, assetBounds } from "@/components/map/AssetSearch";
 import { useLive } from "@/context/LiveFeed";
 
-const TABS = [["candidates", "Candidates"], ["review", "Analyst review"], ["response", "Response"], ["timeline", "Timeline"], ["files", "Files"], ["beforeafter", "Before / After"], ["evidence", "Evidence & audit"], ["log", "Processing log"]];
+const TABS = [["candidates", "Candidates"], ["review", "Analyst review"], ["response", "Response"], ["vulnerability", "Vulnerability"], ["timeline", "Timeline"], ["files", "Files"], ["beforeafter", "Before / After"], ["evidence", "Evidence & audit"], ["log", "Processing log"]];
 const overlayBtn = { background: "rgba(10,14,23,0.85)", border: "1px solid var(--border-highlight)", backdropFilter: "blur(12px)" };
 
 export default function CaseDetail() {
@@ -173,6 +174,7 @@ export default function CaseDetail() {
             {c.primary_jurisdiction && <span data-testid="case-jurisdiction-chip" title={c.primary_jurisdiction.name} className="rounded px-1.5 py-0.5 font-mono text-[10px] text-cyan-300" style={{ background: "rgba(0,240,255,0.08)", border: "1px solid rgba(0,240,255,0.35)" }}>⚖ {c.primary_jurisdiction.code} · {c.primary_jurisdiction.zone_label || c.primary_jurisdiction.zone_type} · {c.primary_jurisdiction.authority}</span>}
             {c.jurisdictions?.filter((z) => z.code !== c.primary_jurisdiction?.code).map((z) => <span key={z.code} data-testid={`case-jurisdiction-other-${z.code}`} className="rounded px-1.5 py-0.5 font-mono text-[10px] text-slate-400" style={{ border: "1px solid var(--border-highlight)" }}>also {z.code} · {z.zone_label || z.zone_type} ({Math.round(z.overlap_fraction * 100)}%)</span>)}
             {!c.primary_jurisdiction && <span data-testid="case-jurisdiction-none" className="rounded px-1.5 py-0.5 font-mono text-[10px] text-slate-500" style={{ border: "1px solid var(--border-highlight)" }}>jurisdiction unassigned</span>}
+            {c.icg && <span data-testid="case-icg-chip" title={`${c.icg.region} (HQ ${c.icg.region_hq}) · ${c.icg.note}`} className="rounded px-1.5 py-0.5 font-mono text-[10px] text-emerald-300" style={{ background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.4)" }}>⚓ {c.icg.code} · {c.icg.district_hq} · {c.icg.region.replace("Coast Guard Region", "CG Region")}{c.icg.approximate ? " · approx." : ""}</span>}
             {spill?.quality_flags?.map((f) => <span key={f} data-testid={`spill-flag-${f}`} className={`rounded px-1.5 py-0.5 font-mono text-[10px] ${f === "experimental_detector" ? "text-rose-200" : "text-amber-300"}`} style={f === "experimental_detector" ? { background: "rgba(255,42,109,0.15)", border: "1px dashed rgba(255,42,109,0.7)" } : { background: "rgba(255,183,3,0.12)", border: "1px solid rgba(255,183,3,0.4)" }}>{f === "experimental_detector" ? "⚠ EXPERIMENTAL dark-spot detector" : f}</span>)}
             {cands?.degraded && <span data-testid="degraded-flag" className="rounded px-1.5 py-0.5 font-mono text-[10px] text-purple-300" style={{ background: "rgba(157,78,221,0.12)", border: "1px solid rgba(157,78,221,0.4)" }}>degraded: no drift inputs</span>}
             {cands?.ambiguous_multiple_vessels && <span data-testid="ambiguous-flag" className="rounded px-1.5 py-0.5 font-mono text-[10px] text-amber-300" style={{ background: "rgba(255,183,3,0.12)", border: "1px solid rgba(255,183,3,0.4)" }}>multiple-vessel ambiguity</span>}
@@ -196,6 +198,7 @@ export default function CaseDetail() {
           {tab === "timeline" && <CaseTimeline caseId={id} caseNumber={c.case_number} />}
           {tab === "files" && <Attachments caseId={id} onChanged={load} />}
           {tab === "response" && <div className="space-y-4"><Playbook caseId={id} /><div className="px-4 pb-4"><Precedents caseId={id} /></div></div>}
+          {tab === "vulnerability" && <Vulnerability caseId={id} spillGeojson={geo} />}
           {tab === "beforeafter" && <div className="h-[520px]"><BeforeAfter caseId={id} /></div>}
           {tab === "evidence" && <EvidenceTimeline evidence={evidence} />}
           {tab === "log" && (

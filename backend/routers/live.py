@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Literal, Optional
 
 import jwt
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -29,8 +29,12 @@ async def _user_from_token(token: str) -> dict:
 
 
 @router.get("/alerts/stream")
-async def alerts_stream(token: str = Query(...)):
-    user = await _user_from_token(token)
+async def alerts_stream(request: Request, token: Optional[str] = Query(None)):
+    """SSE stream; authenticates via httpOnly access_token cookie (browser) or ?token= (programmatic clients)."""
+    tok = request.cookies.get("access_token") or token
+    if not tok:
+        raise HTTPException(401, "Not authenticated")
+    user = await _user_from_token(tok)
     q = subscribe()
 
     async def gen():

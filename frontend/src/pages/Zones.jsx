@@ -1,10 +1,14 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { MapContainer, TileLayer, GeoJSON } from "react-leaflet";
 import { toast } from "sonner";
 import { Map as MapIcon, Plus, Trash2, RefreshCw, Globe } from "lucide-react";
 import { api, apiError, hasRole, pollJob } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { ZoneRules } from "@/components/zones/ZoneRules";
+import { IcgDistricts, icgColor } from "@/components/zones/IcgDistricts";
+
+const icgStyle = (ft) => ({ color: icgColor(ft.properties.region_code), weight: 1, dashArray: "3,3", fillColor: icgColor(ft.properties.region_code), fillOpacity: 0.04 });
+const icgTip = (ft, layer) => layer.bindTooltip(`ICG ${ft.properties.code} · ${ft.properties.name} (${ft.properties.approximate ? "approximate" : "official"})`, { sticky: true, className: "zone-tip" });
 
 const TYPE_COLOR = { territorial: "#FF6B00", contiguous: "#FFB703", eez: "#38BDF8", port_state: "#10B981", custom: "#9D4EDD" };
 const TYPE_LABEL = { territorial: "Territorial Sea (12 NM)", contiguous: "Contiguous Zone (24 NM)", eez: "EEZ (200 NM)", port_state: "Port state", custom: "Custom" };
@@ -24,6 +28,11 @@ export default function Zones() {
   const admin = hasRole(user, "admin");
   const load = () => api.get("/jurisdictions").then((r) => setZones(r.data)).catch((e) => toast.error(apiError(e)));
   useEffect(() => { load(); }, []);
+  const [icg, setIcg] = useState(null);
+  const [showIcg, setShowIcg] = useState(true);
+  const loadIcg = useCallback(() => api.get("/icg/districts/geojson").then((r) => setIcg(r.data)).catch(() => setIcg(null)), []);
+  useEffect(() => { loadIcg(); }, [loadIcg]);
+  const icgKey = icg ? icg.features.map((f) => f.properties.code + (f.properties.updated_by || "")).join("|") : "";
 
   const importOfficial = async () => {
     setImporting("queued…");
@@ -56,9 +65,11 @@ export default function Zones() {
           <GeoJSON key={zones.map((z) => z.id + z.active).join("|")} data={geojson}
             style={(ft) => ({ color: TYPE_COLOR[ft.properties.zone_type] || "#94A3B8", weight: ft.properties.zone_type === "territorial" ? 2.2 : 1.5, fillOpacity: 0.1, dashArray: TYPE_DASH[ft.properties.zone_type] ?? null })}
             onEachFeature={(ft, layer) => layer.bindTooltip(`${ft.properties.code} · ${ft.properties.authority}`, { sticky: true, className: "zone-tip" })} />
+          {showIcg && icg && <GeoJSON key={`icg-${icgKey}`} data={icg} style={icgStyle} onEachFeature={icgTip} />}
         </MapContainer>
         <div className="absolute left-3 top-3 z-[1000] rounded px-3 py-2 text-[11px]" style={{ background: "rgba(10,14,23,0.85)", border: "1px solid var(--border-default)", backdropFilter: "blur(12px)" }}>
           {Object.entries(TYPE_COLOR).map(([k, c]) => <div key={k} className="flex items-center gap-2"><span className="h-2.5 w-4 border" style={{ borderColor: c, background: `${c}33` }} /> {k}</div>)}
+          <label className="mt-1.5 flex items-center gap-2 border-t pt-1.5" style={{ borderColor: "var(--border-default)" }}><input data-testid="toggle-icg-layer" type="checkbox" checked={showIcg} onChange={(e) => setShowIcg(e.target.checked)} /> ICG districts (approx.)</label>
         </div>
       </div>
       <aside className="flex w-[460px] shrink-0 flex-col overflow-y-auto border-l p-4" style={{ borderColor: "var(--border-default)", background: "var(--bg-secondary)" }}>
@@ -86,6 +97,7 @@ export default function Zones() {
           ))}
         </div>
         <ZoneRules zones={zones} />
+        <IcgDistricts onChanged={loadIcg} />
         {admin && (
           <div className="mt-5 rounded border p-4" style={{ borderColor: "rgba(0,240,255,0.35)", background: "rgba(0,240,255,0.04)" }} data-testid="zone-import-form">
             <div className="mb-2 flex items-center gap-2"><Globe size={14} color="#00F0FF" /><h2 className="font-display font-semibold">Import official EEZ boundaries</h2></div>

@@ -1,18 +1,11 @@
 import axios from "axios";
 
-export const api = axios.create({ baseURL: `${process.env.REACT_APP_BACKEND_URL}/api` });
-export const TOKEN_KEY = "sentinelmar_token";
+export const api = axios.create({ baseURL: `${process.env.REACT_APP_BACKEND_URL}/api`, withCredentials: true });
 
-api.interceptors.request.use((cfg) => {
-  const t = localStorage.getItem(TOKEN_KEY);
-  if (t) cfg.headers.Authorization = `Bearer ${t}`;
-  return cfg;
-});
 api.interceptors.response.use(
   (r) => r,
   (err) => {
-    if (err.response?.status === 401 && !err.config?.url?.includes("/auth/login")) {
-      localStorage.removeItem(TOKEN_KEY);
+    if (err.response?.status === 401 && !err.config?.url?.includes("/auth/login") && !err.config?.url?.includes("/auth/me")) {
       window.dispatchEvent(new Event("sentinelmar:unauthorized"));
     }
     return Promise.reject(err);

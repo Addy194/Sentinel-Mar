@@ -117,6 +117,7 @@ export default function Dashboard() {
                 <span className="font-mono text-[10px] text-slate-500">{fmtTime(a.created_at)}</span>
               </div>
               <p className="mt-1.5 text-slate-300 leading-relaxed">{a.message}</p>
+              {a.icg && <p className="mt-1 font-mono text-[10px] text-emerald-300" data-testid={`alert-icg-${a.id}`}>⚓ routed → {a.icg.code} · {a.icg.district_hq} · {a.icg.region_code}{a.icg.approximate ? " (approx.)" : ""}</p>}
               {!a.acknowledged && hasRole(user, "supervisor") && (
                 <button onClick={() => ack(a.id)} data-testid={`alert-ack-${a.id}`} className="mt-2 inline-flex items-center gap-1 rounded px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-emerald-300 hover:bg-emerald-400/10">
                   <Check size={12} /> Acknowledge

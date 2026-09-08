@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { api, TOKEN_KEY } from "@/lib/api";
+import { api } from "@/lib/api";
 
 const AuthCtx = createContext(null);
 
@@ -7,7 +7,6 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null); // null = checking, false = anonymous
 
   useEffect(() => {
-    if (!localStorage.getItem(TOKEN_KEY)) { setUser(false); return; }
     api.get("/auth/me").then((r) => setUser(r.data)).catch(() => setUser(false));
     const onUnauth = () => setUser(false);
     window.addEventListener("sentinelmar:unauthorized", onUnauth);
@@ -16,14 +15,12 @@ export const AuthProvider = ({ children }) => {
 
   const login = useCallback(async (email, password) => {
     const { data } = await api.post("/auth/login", { email, password });
-    localStorage.setItem(TOKEN_KEY, data.access_token);
     setUser(data.user);
     return data.user;
   }, []);
 
   const logout = useCallback(async () => {
     try { await api.post("/auth/logout"); } catch (error) { console.warn("AuthContext: server logout failed, clearing local session anyway", error); }
-    localStorage.removeItem(TOKEN_KEY);
     setUser(false);
   }, []);
 

@@ -26,7 +26,7 @@ async def evaluate_zone_rules(case_id: str, trigger: str, actor="system") -> lis
         if await db.alerts.find_one({"case_id": case_id, "kind": "zone_rule", "rule_id": r["id"]}):
             continue
         now = datetime.now(timezone.utc)
-        alert = {"id": new_id(), "case_id": case_id, "case_number": case["case_number"], "severity": r["severity"], "kind": "zone_rule", "acknowledged": False,
+        alert = {"id": new_id(), "case_id": case_id, "case_number": case["case_number"], "severity": r["severity"], "kind": "zone_rule", "acknowledged": False, "icg": case.get("icg"),
                  "rule_id": r["id"], "rule_name": r["name"], "zone_code": r["zone_code"], "trigger": trigger, "created_at": now,
                  "message": f"ZONE RULE '{r['name']}': spill {case['case_number']} inside {r['zone_code']} ({spill.get('estimated_area_km2')} km², detection confidence {spill.get('detection_confidence'):.2f}) — {r.get('note') or 'requires attention'}"}
         await db.alerts.insert_one(dict(alert))

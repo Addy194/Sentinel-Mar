@@ -66,6 +66,13 @@ async def create_spill_observation(payload: SpillObservationCreate, actor="syste
         case.update({"jurisdictions": zones, "primary_jurisdiction": primary})
     except Exception as e:  # noqa: BLE001
         case.update({"jurisdictions": [], "primary_jurisdiction": None, "jurisdiction_error": str(e)})
+    try:
+        from icg import resolve_icg
+        icg = await resolve_icg(doc["centroid"]["coordinates"][1], doc["centroid"]["coordinates"][0])
+        await db.cases.update_one({"id": case_id}, {"$set": {"icg": icg, "icg_resolved_at": now}})
+        case["icg"] = icg
+    except Exception as e:  # noqa: BLE001
+        logging.getLogger("services").error("ICG routing failed: %s", e)
     await audit("spill_observation", spill_id, "spill.created", {"case_id": case_id, "source": payload.source, "processing_version": payload.processing_version}, actor)
     await audit("case", case_id, "case.opened", {"spill_observation_id": spill_id, "primary_jurisdiction": (case.get("primary_jurisdiction") or {}).get("code")}, actor)
     try:
@@ -205,7 +212,7 @@ async def handle_correlate(job):
     await job_log(job["id"], f"result v{version}: {result['overall_status']} ({len(result['candidates'])} candidates, hash {result['input_hash'][:12]})")
     if result["overall_status"] == "probable" and spill["detection_confidence"] >= 0.6 and not result["severe_flags"]:
         top = result["candidates"][0]
-        alert = {"id": new_id(), "case_id": case_id, "case_number": case["case_number"], "severity": "high", "acknowledged": False,
+        alert = {"id": new_id(), "case_id": case_id, "case_number": case["case_number"], "severity": "high", "acknowledged": False, "icg": case.get("icg"),
                  "message": f"High-confidence correlation: {top.get('vessel_name') or top['mmsi']} (MMSI {top['mmsi']}) score {top['score']:.2f} — requires analyst review",
                  "result_version": version, "created_at": now}
         await db.alerts.insert_one(dict(alert))
@@ -224,7 +231,7 @@ async def handle_correlate(job):
     hits = [c for c in result["candidates"] if c["mmsi"] in watch]
     for c in hits:
         w = watch[c["mmsi"]]
-        alert = {"id": new_id(), "case_id": case_id, "case_number": case["case_number"], "severity": w.get("severity", "high"), "kind": "watchlist", "acknowledged": False,
+        alert = {"id": new_id(), "case_id": case_id, "case_number": case["case_number"], "severity": w.get("severity", "high"), "kind": "watchlist", "acknowledged": False, "icg": case.get("icg"),
                  "mmsi": c["mmsi"], "vessel_name": c.get("vessel_name"), "watchlist_id": w["id"], "result_version": version, "created_at": now,
                  "message": f"WATCHLIST vessel {c.get('vessel_name') or c['mmsi']} (MMSI {c['mmsi']}) ranked #{c['rank']} ({c['status']}, score {c['score']:.2f}) in {case['case_number']} — reason on watchlist: {w['reason']}"}
         await db.alerts.insert_one(dict(alert))

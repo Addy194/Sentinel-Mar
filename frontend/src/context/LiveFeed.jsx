@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { api, TOKEN_KEY } from "@/lib/api";
+import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 
 const Ctx = createContext(null);
@@ -44,7 +44,6 @@ export const LiveFeedProvider = ({ children }) => {
 
   useEffect(() => {
     if (!user) return undefined;
-    const token = localStorage.getItem(TOKEN_KEY);
     let es, poll, closed = false, failures = 0;
     const startPolling = () => {
       if (poll) return;
@@ -58,8 +57,8 @@ export const LiveFeedProvider = ({ children }) => {
       }, 10000);
     };
     const connect = () => {
-      if (closed || !token) return startPolling();
-      es = new EventSource(`${process.env.REACT_APP_BACKEND_URL}/api/alerts/stream?token=${encodeURIComponent(token)}`);
+      if (closed) return startPolling();
+      es = new EventSource(`${process.env.REACT_APP_BACKEND_URL}/api/alerts/stream`, { withCredentials: true });
       es.addEventListener("hello", () => { failures = 0; setMode("live"); if (poll) { clearInterval(poll); poll = null; } });
       es.addEventListener("alert", (e) => { const d = JSON.parse(e.data); sinceRef.current = d.at; onAlert(d.alert, d.notification); });
       es.addEventListener("job", (e) => { const d = JSON.parse(e.data); setLastJob(d); if (d.status === "failed") toast.error(`Job ${d.type} failed`, { description: d.error }); });

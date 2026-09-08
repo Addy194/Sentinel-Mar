@@ -233,5 +233,17 @@ def build_pdf(bundle: dict) -> bytes:
                 el.append(Paragraph(f"• {s['when'][:16]}Z — {s['task']}", small))
         if pb["tactical_coordinates"]:
             el.append(table([["ID", "Lat", "Lon", "Role"]] + [[c["id"], c["lat"], c["lon"], c["role"]] for c in pb["tactical_coordinates"]], [W * 0.12, W * 0.14, W * 0.14, W * 0.6]))
+    if bundle.get("vulnerability"):
+        v = bundle["vulnerability"]
+        el.append(Paragraph("10. Shoreline vulnerability — ADVISORY forward projection", h2))
+        el.append(Paragraph(v["disclaimer"], small))
+        icg = case.get("icg")
+        if icg:
+            el.append(Paragraph(f"Alert routing: {icg['name']} · {icg['region']} (HQ {icg['region_hq']}) — {icg['note']}", small))
+        if v["sites"]:
+            rows = [["Site", "Type", "State", "Dist km", "ETA h", "Priority", "Source"]] + [[s["name"][:48], s["type_label"], s.get("state") or "—", s["distance_km"], s["eta_hours"] if s["eta_hours"] is not None else "—", s["priority"], s.get("origin", "curated")] for s in v["sites"][:25]]
+            el.append(table(rows, [W * 0.34, W * 0.16, W * 0.14, W * 0.08, W * 0.08, W * 0.1, W * 0.1]))
+        else:
+            el.append(Paragraph("No sensitive sites inside the 72 h forward envelope / search radius.", small))
     doc.build(el)
     return buf.getvalue()

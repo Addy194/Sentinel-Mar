@@ -271,6 +271,11 @@ async def case_evidence_pdf(case_id: str, version: Optional[int] = None, user=De
         bundle["playbook"] = await playbook_for_case(case_id)
     except Exception:  # noqa: BLE001
         bundle["playbook"] = None
+    try:
+        from vulnerability import assess
+        bundle["vulnerability"] = await assess(case_id)
+    except Exception:  # noqa: BLE001
+        bundle["vulnerability"] = None
     pdf = build_pdf(bundle)
     await audit("case", case_id, "evidence.exported", {"format": "pdf", "version": bundle["case"].get("latest_result_version"), "bytes": len(pdf)}, user["email"])
     return Response(content=pdf, media_type="application/pdf",

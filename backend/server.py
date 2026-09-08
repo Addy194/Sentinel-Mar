@@ -9,7 +9,9 @@ from starlette.middleware.cors import CORSMiddleware
 from db import db, client, ensure_indexes
 import jobs
 import services  # noqa: F401  (registers job handlers)
-from routers import ingest, cases, system, auth as auth_router, jurisdictions, watchlist, timeline, attachments, rules as rules_router, satellite, ais_live as ais_live_router, scene_watch as scene_watch_router, imagery, live, gazetteer, archive, prosecution
+from routers import ingest, cases, system, auth as auth_router, jurisdictions, watchlist, timeline, attachments, rules as rules_router, satellite, ais_live as ais_live_router, scene_watch as scene_watch_router, imagery, live, gazetteer, archive, prosecution, icg as icg_router, vulnerability as vulnerability_router
+from icg import seed_icg
+from vulnerability import seed_sites
 import ais_live
 import scene_watch  # noqa: F401  (registers scene_watch_poll job handler)
 from storage import init_storage, storage_available
@@ -30,6 +32,8 @@ async def lifespan(app: FastAPI):
     await gazetteer.seed_gazetteer()
     await archive.seed_archive()
     zones_added = await seed_zones()
+    await seed_icg()
+    await seed_sites()
     jobs.start()
     ais_live.start()
     if storage_available():
@@ -75,6 +79,8 @@ api.include_router(ais_live_router.router)
 api.include_router(scene_watch_router.router)
 api.include_router(imagery.router)
 api.include_router(live.router)
+api.include_router(icg_router.router)
+api.include_router(vulnerability_router.router)
 api.include_router(gazetteer.router)
 api.include_router(archive.router)
 api.include_router(prosecution.router)
