@@ -1,0 +1,11 @@
+{
+  "model": "sar_spill_pixel_v1",
+  "version": "1.0.0",
+  "status": "prototype",
+  "input": ["Sentinel-1 VV", "Sentinel-1 VH"],
+  "output": "pixel-level oil-spill candidate probability",
+  "training_note": "Synthetic SAR-like data for demo/integration validation only.",
+  "production_requirement": "Replace and validate on representative Sentinel-1 oil-spill and look-alike datasets before operational use.",
+  "threshold": 0.60,
+  "review_required": true
+}
