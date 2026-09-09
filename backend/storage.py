@@ -1,51 +1,14 @@
-import asyncio
-import logging
-import os
-
-import requests
-
-logger = logging.getLogger("storage")
-STORAGE_BASE = (os.environ.get("INTEGRATION_PROXY_URL") or "").strip() or "https://integrations.emergentagent.com"
-STORAGE_URL = STORAGE_BASE.rstrip("/") + "/objstore/api/v1/storage"
-APP_NAME = "sentinelmar"
-_storage_key = None
-
-
-def init_storage(force: bool = False):
-    global _storage_key
-    if _storage_key and not force:
-        return _storage_key
-    resp = requests.post(f"{STORAGE_URL}/init", json={"emergent_key": os.environ["EMERGENT_LLM_KEY"]}, timeout=30)
-    resp.raise_for_status()
-    _storage_key = resp.json()["storage_key"]
-    return _storage_key
-
-
-def _put(path: str, data: bytes, content_type: str) -> dict:
-    for attempt in range(2):
-        resp = requests.put(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": init_storage(force=attempt > 0), "Content-Type": content_type}, data=data, timeout=180)
-        if resp.status_code == 404 and attempt == 0:
-            continue
-        resp.raise_for_status()
-        return resp.json()
-
-
-def _get(path: str):
-    for attempt in range(2):
-        resp = requests.get(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": init_storage(force=attempt > 0)}, timeout=120)
-        if resp.status_code == 404 and attempt == 0:
-            continue
-        resp.raise_for_status()
-        return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
-
-
-async def put_object(path: str, data: bytes, content_type: str) -> dict:
-    return await asyncio.to_thread(_put, path, data, content_type)
-
-
-async def get_object(path: str):
-    return await asyncio.to_thread(_get, path)
-
-
-def storage_available() -> bool:
-    return bool(os.environ.get("EMERGENT_LLM_KEY"))
+import asyncio, os
+from pathlib import Path
+STORAGE_MODE=os.environ.get('STORAGE_MODE','local'); LOCAL_STORAGE_DIR=Path(os.environ.get('LOCAL_STORAGE_DIR',str(Path(__file__).resolve().parents[1]/'data'/'storage')))
+def _safe(path):
+ p=Path(path); clean=Path(*[x for x in p.parts if x not in ('','.')]);
+ if '..' in clean.parts: raise ValueError('invalid storage path')
+ return LOCAL_STORAGE_DIR/clean
+def init_storage(force=False): LOCAL_STORAGE_DIR.mkdir(parents=True,exist_ok=True)
+def storage_available(): return STORAGE_MODE=='local'
+def _put_local(path,data,content_type):
+ p=_safe(path); p.parent.mkdir(parents=True,exist_ok=True); p.write_bytes(data); return {'path':path,'content_type':content_type,'bytes':len(data)}
+def _get_local(path): return _safe(path).read_bytes(),'application/octet-stream'
+async def put_object(path,data,content_type): return await asyncio.to_thread(_put_local,path,data,content_type)
+async def get_object(path): return await asyncio.to_thread(_get_local,path)
